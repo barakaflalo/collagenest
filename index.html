@@ -127,6 +127,12 @@ input[type=color]{width:46px;height:40px;border:1px solid var(--line);border-rad
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:4px}
 .thumbs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;display:block;background:var(--bg3)}
 .thumbs button{padding:0;border:0;background:none;position:relative}
+.thumbs .ath img{border:2px solid transparent}
+.thumbs .ath.on img{border-color:var(--accent)}
+.thumbs .ath.out img{opacity:.3;filter:grayscale(1)}
+.thumbs .tg{position:absolute;top:3px;inset-inline-end:3px;font-style:normal;font-size:12px;background:var(--accent);color:var(--onaccent);border-radius:8px;padding:0 5px;line-height:18px}
+.thumbs .tg.sm{background:var(--bg3);color:var(--muted);font-size:10px}
+.thumbs .fc{position:absolute;bottom:3px;inset-inline-start:3px;font-style:normal;font-size:11px;background:rgba(0,0,0,.6);color:#fff;border-radius:6px;padding:0 4px}
 .thumbs button.sel img{outline:3px solid var(--danger);outline-offset:-3px;opacity:.6}
 .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
 .gal .lib .cov{display:block}
@@ -216,7 +222,7 @@ pre.diag{white-space:pre-wrap;word-break:break-all;background:var(--bg3);border:
 <script>
 /* ═══ CollageNest · AppNest — core (storage, i18n helpers, UI shell) ═══ */
 'use strict';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const STORE_URL = 'https://appnest-store.pages.dev';
 const FEEDBACK_MAIL = 'appnest55@gmail.com';
 
@@ -327,11 +333,13 @@ function detectLang() {
 const DEF_S = {
   lang: detectLang(), theme: 'gold', mode: 'night', name: '', fmt: 'jpg', onboarded: false,
   mosaic: { cols: 50, aspect: '1:1', variety: 'med', flip: true, tint: 20, overlay: 0, grout: 0, groutColor: '#000000', shape: 'square', size: '4k' },
-  collage: { ratio: '1:1', gap: 2, radius: 2, bg: '#ffffff', size: 3072 }
+  collage: { ratio: '1:1', gap: 2, radius: 2, bg: '#ffffff', size: 3072 },
+  auto: { count: 0, ratio: '4:3', faces: true, size: '2k' }
 };
 let S = Object.assign({}, DEF_S, Store.get('settings', {}));
 S.mosaic = Object.assign({}, DEF_S.mosaic, S.mosaic || {});
 S.collage = Object.assign({}, DEF_S.collage, S.collage || {});
+S.auto = Object.assign({}, DEF_S.auto, S.auto || {});
 function saveS() { Store.set('settings', S); }
 
 /* ── i18n ── */
@@ -1652,6 +1660,473 @@ async function renderCollageSetup() {
   $('cPick').onclick = newCollage;
 }
 
+/* ═══ CollageNest — AutoCollage: analyse → pick best → layout → seams → multi-band blend (worker) ═══
+   Face detection: face-api (TinyFaceDetector) loaded lazily from CDN, runs on the device.
+   No faces library (offline / blocked)? → saliency-only, with an honest notice. */
+
+const FACE_VER = '1.7.15';
+const FACE_JS = ['https://cdn.jsdelivr.net/npm/@vladmandic/face-api@' + FACE_VER + '/dist/face-api.js', 'https://unpkg.com/@vladmandic/face-api@' + FACE_VER + '/dist/face-api.js'];
+const FACE_MODEL = ['https://cdn.jsdelivr.net/npm/@vladmandic/face-api@' + FACE_VER + '/model/', 'https://unpkg.com/@vladmandic/face-api@' + FACE_VER + '/model/'];
+const AUTO_MAX = 200;
+let _faces = null;
+function loadFaces() {
+  if (_faces) return _faces;
+  _faces = (async () => {
+    await loadScript(FACE_JS, () => typeof window.faceapi === 'object' && !!window.faceapi.nets);
+    const fa = window.faceapi;
+    try { await fa.tf.setBackend('webgl'); await fa.tf.ready(); } catch (e) { await fa.tf.setBackend('cpu'); await fa.tf.ready(); }
+    let ok = false;
+    for (const u of FACE_MODEL) { try { await fa.nets.tinyFaceDetector.loadFromUri(u); ok = true; break; } catch (e) {} }
+    if (!ok) throw new Error('model');
+    return fa;
+  })();
+  _faces.catch(() => { _faces = null; });
+  return _faces;
+}
+async function detectFaces(fa, canvas) {
+  const r = await fa.detectAllFaces(canvas, new fa.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.6 }));
+  return r.map(d => ({ x: d.box.x / canvas.width, y: d.box.y / canvas.height, w: d.box.width / canvas.width, h: d.box.height / canvas.height, s: d.score }))
+    .filter(f => f.w > 0.02 && f.h > 0.02);
+}
+
+/* decode at reduced size (fast JPEG downscale when the browser supports it) */
+async function decodeScaled(file, maxSide) {
+  try {
+    const b = await createImageBitmap(file, { imageOrientation: 'from-image', resizeWidth: maxSide, resizeQuality: 'high' });
+    if (b.height <= maxSide * 1.05) return b;
+    const h = await createImageBitmap(file, { imageOrientation: 'from-image', resizeHeight: maxSide, resizeQuality: 'high' }); b.close(); return h;
+  } catch (e) {}
+  const b = await decodeImage(file);
+  const s = Math.min(1, maxSide / Math.max(b.width, b.height)); if (s >= 1) return b;
+  const c = mkCanvas(Math.round(b.width * s), Math.round(b.height * s)), x = c.getContext('2d');
+  x.imageSmoothingQuality = 'high'; x.drawImage(b, 0, 0, c.width, c.height); b.close();
+  return await createImageBitmap(c);
+}
+
+/* per-photo analysis: thumb, colour histogram, sharpness, exposure, saliency grid, faces, ROI */
+async function analysePhoto(file, fa) {
+  const bmp = await decodeScaled(file, 512);
+  const W = bmp.width, H = bmp.height, A = W / H;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bmp, 0, 0);
+  const tb = await scaledBlob(c, W, H, 200, 0.8);
+  // small working copy
+  const sw = 96, sh = Math.max(8, Math.round(96 / A));
+  const sc = document.createElement('canvas'); sc.width = sw; sc.height = sh;
+  const sx = sc.getContext('2d', { willReadFrequently: true }); sx.imageSmoothingQuality = 'high'; sx.drawImage(bmp, 0, 0, sw, sh);
+  const d = sx.getImageData(0, 0, sw, sh).data;
+  const hist = new Float32Array(64); let lum = 0, lum2 = 0, sat = 0; const n = sw * sh;
+  const gray = new Float32Array(n), lab = new Float32Array(n * 3);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const r = d[p], g = d[p + 1], b = d[p + 2];
+    hist[(r >> 6) * 16 + (g >> 6) * 4 + (b >> 6)] += 1 / n;
+    const y = 0.299 * r + 0.587 * g + 0.114 * b; gray[i] = y; lum += y; lum2 += y * y;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b); sat += mx ? (mx - mn) / mx : 0;
+    lin2lab(LIN[r], LIN[g], LIN[b], lab, i * 3);
+  }
+  lum /= n; const contrast = Math.sqrt(Math.max(0, lum2 / n - lum * lum)); sat /= n;
+  // sharpness: variance of Laplacian on a mid-size grey copy
+  const gw = 256, gh = Math.max(8, Math.round(256 / A));
+  const gc = document.createElement('canvas'); gc.width = gw; gc.height = gh;
+  const gx = gc.getContext('2d', { willReadFrequently: true }); gx.drawImage(bmp, 0, 0, gw, gh);
+  const gd = gx.getImageData(0, 0, gw, gh).data; let ls = 0, ls2 = 0, ln = 0;
+  const gy = k => 0.299 * gd[k * 4] + 0.587 * gd[k * 4 + 1] + 0.114 * gd[k * 4 + 2];
+  for (let y = 1; y < gh - 1; y++) for (let xx = 1; xx < gw - 1; xx++) { const k = y * gw + xx; const L = 4 * gy(k) - gy(k - 1) - gy(k + 1) - gy(k - gw) - gy(k + gw); ls += L; ls2 += L * L; ln++; }
+  const sharp = ls2 / ln - (ls / ln) * (ls / ln);
+  // saliency: colour distinctiveness + local contrast + soft centre bias, on a 24-wide grid
+  const SW = 24, SH = Math.max(6, Math.round(24 / A)), sal = new Float32Array(SW * SH);
+  let mL = 0, ma = 0, mb = 0; for (let i = 0; i < n; i++) { mL += lab[i * 3]; ma += lab[i * 3 + 1]; mb += lab[i * 3 + 2]; } mL /= n; ma /= n; mb /= n;
+  const cell = new Float32Array(SW * SH * 3), cnt = new Float32Array(SW * SH);
+  for (let y = 0; y < sh; y++) for (let xx = 0; xx < sw; xx++) { const i = y * sw + xx, k = Math.min(SH - 1, Math.floor(y / sh * SH)) * SW + Math.min(SW - 1, Math.floor(xx / sw * SW)); cell[k * 3] += lab[i * 3]; cell[k * 3 + 1] += lab[i * 3 + 1]; cell[k * 3 + 2] += lab[i * 3 + 2]; cnt[k]++; }
+  for (let k = 0; k < SW * SH; k++) { const m = cnt[k] || 1; cell[k * 3] /= m; cell[k * 3 + 1] /= m; cell[k * 3 + 2] /= m; }
+  let smax = 1e-6;
+  for (let y = 0; y < SH; y++) for (let xx = 0; xx < SW; xx++) {
+    const k = y * SW + xx, L = cell[k * 3], a = cell[k * 3 + 1], b = cell[k * 3 + 2];
+    const glob = Math.hypot(L - mL, (a - ma) * 1.3, (b - mb) * 1.3);
+    let loc = 0, ln2 = 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const yy = y + dy, x2 = xx + dx; if ((dx || dy) && yy >= 0 && x2 >= 0 && yy < SH && x2 < SW) { const q = yy * SW + x2; loc += Math.hypot(L - cell[q * 3], a - cell[q * 3 + 1], b - cell[q * 3 + 2]); ln2++; } }
+    const cx = (xx + 0.5) / SW - 0.5, cy = (y + 0.5) / SH - 0.5;
+    const v = (glob * 0.6 + (loc / (ln2 || 1)) * 0.9) * (1 - 0.9 * (cx * cx + cy * cy));
+    sal[k] = v; if (v > smax) smax = v;
+  }
+  for (let k = 0; k < sal.length; k++) sal[k] /= smax;
+  let faces = [];
+  if (fa) { try { faces = await detectFaces(fa, c); } catch (e) { logErr('faces: ' + (e && e.message)); } }
+  for (const f of faces) {
+    const x0 = Math.floor((f.x - f.w * 0.3) * SW), x1 = Math.ceil((f.x + f.w * 1.3) * SW), y0 = Math.floor((f.y - f.h * 0.4) * SH), y1 = Math.ceil((f.y + f.h * 1.4) * SH);
+    for (let y = Math.max(0, y0); y < Math.min(SH, y1); y++) for (let xx = Math.max(0, x0); xx < Math.min(SW, x1); xx++) sal[y * SW + xx] = Math.max(sal[y * SW + xx], 1);
+  }
+  // ROI: box around strong saliency (and all faces), at least 45% of each side
+  let rx0 = 1, ry0 = 1, rx1 = 0, ry1 = 0;
+  for (let y = 0; y < SH; y++) for (let xx = 0; xx < SW; xx++) if (sal[y * SW + xx] > 0.55) { rx0 = Math.min(rx0, xx / SW); ry0 = Math.min(ry0, y / SH); rx1 = Math.max(rx1, (xx + 1) / SW); ry1 = Math.max(ry1, (y + 1) / SH); }
+  for (const f of faces) { rx0 = Math.min(rx0, f.x - f.w * 0.25); ry0 = Math.min(ry0, f.y - f.h * 0.35); rx1 = Math.max(rx1, f.x + f.w * 1.25); ry1 = Math.max(ry1, f.y + f.h * 1.25); }
+  if (rx1 <= rx0) { rx0 = 0.25; ry0 = 0.25; rx1 = 0.75; ry1 = 0.75; }
+  const grow = (a0, a1, min) => { let w = a1 - a0; if (w < min) { const c2 = (a0 + a1) / 2; a0 = c2 - min / 2; a1 = c2 + min / 2; } if (a0 < 0) { a1 -= a0; a0 = 0; } if (a1 > 1) { a0 -= a1 - 1; a1 = 1; } return [Math.max(0, a0), Math.min(1, a1)]; };
+  [rx0, rx1] = grow(rx0, rx1, 0.45); [ry0, ry1] = grow(ry0, ry1, 0.45);
+  bmp.close();
+  const expo = 1 - Math.min(1, Math.abs(lum - 125) / 125) * 0.8 - (contrast < 25 ? 0.3 : 0);
+  return { file, name: file.name || '', w: W, h: H, a: A, thumb: tb.blob, hist, sharp, expo, sat, contrast, sal, sw: SW, sh: SH, faces, roi: { x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0 }, boost: 0, mode: 'auto' };
+}
+const histDist = (a, b) => { let s = 0; for (let i = 0; i < 64; i++) s += Math.abs(a[i] - b[i]); return s / 2; };
+
+/* choose K photos: quality + faces, then variety; near-duplicates are skipped */
+function autoK(n) { return n <= 6 ? n : clamp(Math.round(3 + Math.sqrt(n)), 5, 10); }
+function selectPhotos(ps, K) {
+  const sh = ps.map(p => Math.log(1 + p.sharp)), smx = Math.max(...sh, 1e-6), smn = Math.min(...sh);
+  ps.forEach((p, i) => {
+    p.q = 0.45 * ((sh[i] - smn) / ((smx - smn) || 1)) + 0.3 * clamp(p.expo, 0, 1) + 0.25 * clamp(p.sat * 2, 0, 1);
+    p.qf = p.q + (p.faces.length ? 0.35 + Math.min(0.25, p.faces.reduce((s, f) => s + f.w * f.h, 0) * 2) : 0);
+    p.dup = -1; p.sel = false;
+  });
+  // mark near-duplicates (keep the better one)
+  const order = ps.map((p, i) => i).sort((a, b) => ps[b].qf - ps[a].qf);
+  const kept = [];
+  for (const i of order) { const j = kept.find(k => histDist(ps[i].hist, ps[k].hist) < 0.09 && Math.abs(ps[i].a - ps[k].a) < 0.15); if (j != null) ps[i].dup = j; else kept.push(i); }
+  const chosen = ps.map((p, i) => i).filter(i => ps[i].mode === 'pin');
+  const pool = ps.map((p, i) => i).filter(i => ps[i].mode === 'auto' && ps[i].dup < 0);
+  while (chosen.length < K && pool.length) {
+    let best = -1, bv = -1e9;
+    for (const i of pool) {
+      const div = chosen.length ? Math.min(...chosen.map(c => histDist(ps[i].hist, ps[c].hist))) : 0.5;
+      const v = ps[i].qf * 0.55 + div * 0.9; if (v > bv) { bv = v; best = i; }
+    }
+    chosen.push(best); pool.splice(pool.indexOf(best), 1);
+  }
+  if (chosen.length < Math.min(K, 2)) { // allow duplicates when nothing else is left
+    for (const i of order) if (chosen.length < K && !chosen.includes(i) && ps[i].mode !== 'out') chosen.push(i);
+  }
+  chosen.forEach(i => ps[i].sel = true);
+  return chosen;
+}
+
+/* ── layout in a virtual canvas (height 1000) ── */
+function seeded(seed) { let s = seed >>> 0 || 7; return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+function makeLayout(ps, chosen, ratio, seed) {
+  const R = seeded(seed), VH = 1000, VW = Math.round(1000 * ratio);
+  const items = chosen.map(i => ({ i, w: 1 + (ps[i].faces.length ? 0.7 : 0) + ps[i].boost + R() * 0.25 }));
+  for (let k = items.length - 1; k > 0; k--) { const j = Math.floor(R() * (k + 1)); [items[k], items[j]] = [items[j], items[k]]; }
+  const leaves = [];
+  (function split(rect, its) {
+    if (its.length === 1) { leaves.push({ rect, w: its[0].w }); return; }
+    const tot = its.reduce((s, t) => s + t.w, 0); let best = 1, bd = 1e9, acc = 0;
+    for (let k = 1; k < its.length; k++) { acc += its[k - 1].w; const dd = Math.abs(acc - tot / 2); if (dd < bd) { bd = dd; best = k; } }
+    const L = its.slice(0, best), Rr = its.slice(best);
+    const f = clamp(L.reduce((s, t) => s + t.w, 0) / tot + (R() - 0.5) * 0.08, 0.28, 0.72);
+    if (rect.w >= rect.h) { const w1 = rect.w * f; split({ x: rect.x, y: rect.y, w: w1, h: rect.h }, L); split({ x: rect.x + w1, y: rect.y, w: rect.w - w1, h: rect.h }, Rr); }
+    else { const h1 = rect.h * f; split({ x: rect.x, y: rect.y, w: rect.w, h: h1 }, L); split({ x: rect.x, y: rect.y + h1, w: rect.w, h: rect.h - h1 }, Rr); }
+  })({ x: 0, y: 0, w: VW, h: VH }, items);
+  // assign photos to leaves: big leaves first, best aspect match (faces prefer bigger leaves)
+  leaves.sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h);
+  const free = chosen.slice(), place = [];
+  for (const lf of leaves) {
+    const la = lf.rect.w / lf.rect.h; let bi = 0, bv = 1e9;
+    free.forEach((i, k) => { const p = ps[i], ra = p.a * p.roi.w / p.roi.h; const v = Math.abs(Math.log(ra / la)) - (p.faces.length ? 0.25 : 0) - p.boost * 0.3; if (v < bv) { bv = v; bi = k; } });
+    const i = free.splice(bi, 1)[0], p = ps[i], r = lf.rect;
+    const iw = p.a * 1000, ih = 1000; // photo in its own units (height 1000)
+    const sCover = Math.max(r.w / iw, r.h / ih) * 1.18;
+    const sRoi = Math.min(r.w * 0.94 / (p.roi.w * iw), r.h * 0.94 / (p.roi.h * ih));
+    const s = clamp(sRoi, sCover, sCover * 1.7);
+    const dw = iw * s, dh = ih * s;
+    let ox = r.x + r.w / 2 - (p.roi.x + p.roi.w / 2) * dw, oy = r.y + r.h / 2 - (p.roi.y + p.roi.h / 2) * dh;
+    ox = clamp(ox, r.x + r.w - dw, r.x); oy = clamp(oy, r.y + r.h - dh, r.y);
+    place.push({ i, rect: r, ox, oy, dw, dh });
+  }
+  return { VW, VH, place };
+}
+
+/* label map: which photo shows at each spot (saliency + own region + faces), then Potts smoothing */
+function labelMap(ps, L) {
+  const LW = L.VW >= L.VH ? 200 : Math.round(200 * L.VW / L.VH), LH = Math.round(LW * L.VH / L.VW), c = L.VW / LW;
+  const K = L.place.length, sc = new Float32Array(LW * LH * K).fill(-1e9), lab = new Int8Array(LW * LH), face = new Int8Array(LW * LH).fill(-1);
+  const diag = Math.hypot(L.VW, L.VH);
+  L.place.forEach((pl, k) => {
+    const p = ps[pl.i], r = pl.rect;
+    for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+      const px = (x + 0.5) * c, py = (y + 0.5) * c, u = (px - pl.ox) / pl.dw, v = (py - pl.oy) / pl.dh;
+      if (u < 0.004 || v < 0.004 || u > 0.996 || v > 0.996) continue;
+      const sx = Math.min(p.sw - 1, Math.floor(u * p.sw)), sy = Math.min(p.sh - 1, Math.floor(v * p.sh)), sal = p.sal[sy * p.sw + sx];
+      const dx = Math.max(r.x - px, 0, px - (r.x + r.w)), dy = Math.max(r.y - py, 0, py - (r.y + r.h)), dd = Math.hypot(dx, dy) / diag;
+      const prior = dd === 0 ? 1 : Math.max(-1, 1 - dd * 9);
+      const edge = Math.min(u, v, 1 - u, 1 - v) < 0.05 ? -0.9 : 0;
+      sc[(y * LW + x) * K + k] = sal * 0.9 + prior * 1.4 + edge + p.boost * 0.5;
+    }
+    for (const f of p.faces) { // protected face boxes
+      const fx0 = pl.ox + (f.x - f.w * 0.15) * pl.dw, fx1 = pl.ox + (f.x + f.w * 1.15) * pl.dw, fy0 = pl.oy + (f.y - f.h * 0.25) * pl.dh, fy1 = pl.oy + (f.y + f.h * 1.15) * pl.dh;
+      for (let y = Math.max(0, Math.floor(fy0 / c)); y < Math.min(LH, Math.ceil(fy1 / c)); y++) for (let x = Math.max(0, Math.floor(fx0 / c)); x < Math.min(LW, Math.ceil(fx1 / c)); x++) {
+        const q = y * LW + x; if (sc[q * K + k] > -1e8) { sc[q * K + k] += 3; if (face[q] < 0) face[q] = k; }
+      }
+    }
+  });
+  for (let q = 0; q < LW * LH; q++) { let b = 0, bv = -1e10; for (let k = 0; k < K; k++) if (sc[q * K + k] > bv) { bv = sc[q * K + k]; b = k; } lab[q] = b; }
+  const beta = 0.32, cntv = new Float32Array(K);
+  for (let it = 0; it < 8; it++) {
+    for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
+      const q = y * LW + x; if (face[q] >= 0) { lab[q] = face[q]; continue; }
+      cntv.fill(0);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const yy = y + dy, xx = x + dx; if (yy >= 0 && xx >= 0 && yy < LH && xx < LW) cntv[lab[yy * LW + xx]]++; }
+      let b = lab[q], bv = -1e10;
+      for (let k = 0; k < K; k++) { const s = sc[q * K + k]; if (s < -1e8) continue; const v = s + beta * cntv[k]; if (v > bv) { bv = v; b = k; } }
+      lab[q] = b;
+    }
+  }
+  const area = new Float32Array(K); for (let q = 0; q < lab.length; q++) area[lab[q]]++;
+  return { LW, LH, lab, area: [...area].map(a => a / lab.length) };
+}
+
+/* ── multi-band (Laplacian pyramid) blending worker ── */
+function blendWorkerCore() {
+  let W, H, NL, acc = [], dims = [];
+  function down(src, w, h, ch) { // binomial 5-tap blur + decimate
+    const w2 = Math.max(1, (w + 1) >> 1), h2 = Math.max(1, (h + 1) >> 1), tmp = new Float32Array(w2 * h * ch), out = new Float32Array(w2 * h2 * ch);
+    const K = [1, 4, 6, 4, 1];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w2; x++) for (let c = 0; c < ch; c++) { let s = 0; for (let k = -2; k <= 2; k++) { const xx = Math.min(w - 1, Math.max(0, 2 * x + k)); s += K[k + 2] * src[(y * w + xx) * ch + c]; } tmp[(y * w2 + x) * ch + c] = s / 16; }
+    for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) for (let c = 0; c < ch; c++) { let s = 0; for (let k = -2; k <= 2; k++) { const yy = Math.min(h - 1, Math.max(0, 2 * y + k)); s += K[k + 2] * tmp[(yy * w2 + x) * ch + c]; } out[(y * w2 + x) * ch + c] = s / 16; }
+    return out;
+  }
+  function up(src, w2, h2, w, h, ch) { // bilinear expand to w×h
+    const out = new Float32Array(w * h * ch);
+    for (let y = 0; y < h; y++) { const fy = Math.min(h2 - 1, Math.max(0, (y + 0.5) / 2 - 0.5)), y0 = Math.floor(fy), y1 = Math.min(h2 - 1, y0 + 1), ty = fy - y0;
+      for (let x = 0; x < w; x++) { const fx = Math.min(w2 - 1, Math.max(0, (x + 0.5) / 2 - 0.5)), x0 = Math.floor(fx), x1 = Math.min(w2 - 1, x0 + 1), tx = fx - x0;
+        for (let c = 0; c < ch; c++) { const a = src[(y0 * w2 + x0) * ch + c], b = src[(y0 * w2 + x1) * ch + c], d = src[(y1 * w2 + x0) * ch + c], e = src[(y1 * w2 + x1) * ch + c];
+          out[(y * w + x) * ch + c] = (a * (1 - tx) + b * tx) * (1 - ty) + (d * (1 - tx) + e * tx) * ty; } } }
+    return out;
+  }
+  onmessage = e => {
+    const m = e.data;
+    if (m.t === 'init') {
+      W = m.W; H = m.H; NL = m.L; acc = []; dims = []; let w = W, h = H;
+      for (let l = 0; l <= NL; l++) { dims.push([w, h]); acc.push(new Float32Array(w * h * 3)); w = Math.max(1, (w + 1) >> 1); h = Math.max(1, (h + 1) >> 1); }
+      postMessage({ t: 'ok' });
+    } else if (m.t === 'add') {
+      const n = W * H; let g = new Float32Array(n * 3), mk = new Float32Array(n);
+      for (let i = 0; i < n; i++) { g[i * 3] = m.rgba[i * 4]; g[i * 3 + 1] = m.rgba[i * 4 + 1]; g[i * 3 + 2] = m.rgba[i * 4 + 2]; mk[i] = m.mask[i] / 255; }
+      for (let l = 0; l <= NL; l++) {
+        const [w, h] = dims[l], A = acc[l];
+        if (l < NL) {
+          const [w2, h2] = dims[l + 1], gn = down(g, w, h, 3), mn = down(mk, w, h, 1), u = up(gn, w2, h2, w, h, 3);
+          for (let i = 0; i < w * h; i++) { const a = mk[i]; if (a) { A[i * 3] += (g[i * 3] - u[i * 3]) * a; A[i * 3 + 1] += (g[i * 3 + 1] - u[i * 3 + 1]) * a; A[i * 3 + 2] += (g[i * 3 + 2] - u[i * 3 + 2]) * a; } }
+          g = gn; mk = mn;
+        } else for (let i = 0; i < w * h; i++) { const a = mk[i]; A[i * 3] += g[i * 3] * a; A[i * 3 + 1] += g[i * 3 + 1] * a; A[i * 3 + 2] += g[i * 3 + 2] * a; }
+      }
+      postMessage({ t: 'ok' });
+    } else if (m.t === 'done') {
+      let o = acc[NL];
+      for (let l = NL - 1; l >= 0; l--) { const [w, h] = dims[l], [w2, h2] = dims[l + 1], u = up(o, w2, h2, w, h, 3), A = acc[l]; for (let i = 0; i < u.length; i++) u[i] += A[i]; o = u; }
+      const out = new Uint8ClampedArray(W * H * 4);
+      for (let i = 0; i < W * H; i++) { out[i * 4] = o[i * 3]; out[i * 4 + 1] = o[i * 3 + 1]; out[i * 4 + 2] = o[i * 3 + 2]; out[i * 4 + 3] = 255; }
+      acc = []; postMessage({ t: 'res', out }, [out.buffer]);
+    }
+  };
+}
+let _blendURL = null;
+function blendWorker() {
+  if (!_blendURL) _blendURL = URL.createObjectURL(new Blob(['(' + blendWorkerCore.toString() + ')();'], { type: 'text/javascript' }));
+  const w = new Worker(_blendURL); let res = null, rej = null;
+  w.onmessage = e => { const r = res; res = rej = null; r && r(e.data); };
+  w.onerror = e => { const r = rej; res = rej = null; r && r(new Error(e.message || 'worker')); };
+  return { call(msg, tr) { return new Promise((a, b) => { res = a; rej = b; w.postMessage(msg, tr || []); }); }, end() { w.terminate(); } };
+}
+
+/* render a layout at a given output height → canvas */
+async function renderAuto(ps, L, LM, OH, p, p0, p1) {
+  const f = OH / L.VH, OW = Math.round(L.VW * f);
+  const NL = Math.max(1, Math.min(7, Math.floor(Math.log2(Math.min(OW, OH) / 12))));
+  const wk = blendWorker();
+  try {
+    await wk.call({ t: 'init', W: OW, H: OH, L: NL });
+    const cv = document.createElement('canvas'); cv.width = OW; cv.height = OH;
+    const x = cv.getContext('2d', { willReadFrequently: true });
+    const mc = document.createElement('canvas'); mc.width = LM.LW; mc.height = LM.LH; const mx = mc.getContext('2d', { willReadFrequently: true });
+    const big = document.createElement('canvas'); big.width = OW; big.height = OH; const bx = big.getContext('2d', { willReadFrequently: true });
+    for (let k = 0; k < L.place.length; k++) {
+      if (p && p.cancelled) throw new Error('cancel');
+      const pl = L.place[k], ph = ps[pl.i];
+      const need = Math.ceil(Math.max(pl.dw, pl.dh) * f * 1.05);
+      const b = await decodeScaled(ph.file, clamp(need, 256, 4096));
+      x.save(); x.filter = 'blur(' + Math.round(OH / 30) + 'px)';
+      const s0 = Math.max(OW / b.width, OH / b.height) * 1.1; x.drawImage(b, (OW - b.width * s0) / 2, (OH - b.height * s0) / 2, b.width * s0, b.height * s0); x.restore();
+      x.imageSmoothingQuality = 'high'; x.drawImage(b, pl.ox * f, pl.oy * f, pl.dw * f, pl.dh * f); b.close();
+      const rgba = x.getImageData(0, 0, OW, OH).data;
+      const md = mx.createImageData(LM.LW, LM.LH);
+      for (let q = 0; q < LM.lab.length; q++) { const v = LM.lab[q] === k ? 255 : 0; md.data[q * 4] = md.data[q * 4 + 1] = md.data[q * 4 + 2] = v; md.data[q * 4 + 3] = 255; }
+      mx.putImageData(md, 0, 0);
+      bx.imageSmoothingEnabled = true; bx.imageSmoothingQuality = 'high'; bx.drawImage(mc, 0, 0, OW, OH);
+      const bd = bx.getImageData(0, 0, OW, OH).data, mask = new Uint8Array(OW * OH);
+      for (let i = 0; i < mask.length; i++) mask[i] = bd[i * 4];
+      if (p) p.set(p0 + (p1 - p0) * (k + 0.5) / L.place.length, T('blendingN', { n: nf(k + 1), t: nf(L.place.length) }));
+      await wk.call({ t: 'add', rgba, mask }, [rgba.buffer, mask.buffer]);
+    }
+    if (p) p.set(p1, T('finishing'));
+    const r = await wk.call({ t: 'done' });
+    x.putImageData(new ImageData(r.out, OW, OH), 0, 0);
+    big.width = big.height = mc.width = mc.height = 1;
+    return { c: cv, W: OW, H: OH };
+  } finally { wk.end(); }
+}
+
+/* ── session + screens ── */
+let AS = null; // { ps:[], chosen:[], ratio, seed, L, LM, prev:{c,W,H}, saved }
+const AUTO_RATIOS = { '4:3': 4 / 3, '3:2': 1.5, '16:9': 16 / 9, '1:1': 1, '4:5': 0.8, '9:16': 9 / 16 };
+async function analyseFiles(files) {
+  files = files.filter(isImageFile);
+  if (!files.length) return;
+  if (files.length > AUTO_MAX) { toast(T('autoMax', { n: AUTO_MAX }), true); files = files.slice(0, AUTO_MAX); }
+  const p = Prog.show(T('analysingPhotos'), true);
+  let fa = null;
+  if (S.auto.faces) {
+    p.set(0.02, T('loadingFaces'));
+    try { fa = await loadFaces(); AS_faceState = 'ok'; } catch (e) { AS_faceState = 'fail'; logErr('faceapi: ' + (e && e.message)); }
+  } else AS_faceState = 'off';
+  const ps = AS && AS.ps ? AS.ps.slice() : [];
+  const have = new Set(ps.map(x => x.name + '|' + x.file.size));
+  let failed = 0;
+  for (let i = 0; i < files.length && !p.cancelled; i++) {
+    const f = files[i]; if (have.has(f.name + '|' + f.size)) continue;
+    try { ps.push(await analysePhoto(f, fa)); } catch (e) { failed++; }
+    p.set(0.05 + 0.95 * (i + 1) / files.length, T('analysedN', { n: nf(i + 1), t: nf(files.length) }));
+    if (i % 4 === 3) await yieldUI();
+  }
+  p.close();
+  if (!ps.length) { toast(T('decodeFail'), true); return; }
+  AS = { ps, chosen: [], ratio: S.auto.ratio, seed: (Math.random() * 4e9) >>> 0, L: null, LM: null, prev: null, saved: false };
+  reselect();
+  if (AS_faceState === 'fail') toast(T('facesUnavailable'), true);
+  else if (failed) toast(T('failedN', { n: nf(failed) }), true);
+}
+let AS_faceState = 'idle';
+function reselect() { const K = S.auto.count ? Math.min(S.auto.count, AS.ps.filter(p => p.mode !== 'out').length) : autoK(AS.ps.filter(p => p.mode !== 'out').length); AS.chosen = selectPhotos(AS.ps, Math.max(1, K)); }
+
+async function renderAutoSetup() {
+  const st = S.auto; let html = '<div class="screen">';
+  if (AS && AS.prev) html += '<button class="btn primary big" id="aResume" type="button" style="margin-bottom:14px">✏️ ' + esc(T('resumeAuto')) + '</button>';
+  html += '<div class="card"><h3>✨ ' + esc(T('autoTitle')) + '</h3><p class="muted" style="margin-top:0">' + esc(T('autoIntro')) + '</p>' +
+    '<button class="pickbox" id="aPick" type="button"><span class="em">📸</span><span><b>' + esc(AS ? T('addMorePhotos') : T('pickTripPhotos')) + '</b><br><small class="muted">' + esc(T('pickTripHint', { n: AUTO_MAX })) + '</small></span></button>';
+  if (AS) {
+    const ps = AS.ps, faces = ps.reduce((s, p) => s + p.faces.length, 0), dups = ps.filter(p => p.dup >= 0).length;
+    html += '<div class="note">' + esc(T('autoPicked', { k: nf(AS.chosen.length), n: nf(ps.length) })) + (faces ? ' · 🙂 ' + esc(T('facesFound', { n: nf(faces) })) : '') + (dups ? ' · ' + esc(T('dupsFound', { n: nf(dups) })) : '') + '</div>' +
+      '<div class="small muted" style="margin-bottom:8px">' + esc(T('autoTapHint')) + '</div><div class="thumbs" id="aThumbs">' +
+      ps.map((p, i) => '<button type="button" data-i="' + i + '" class="ath ' + (p.sel ? 'on ' : '') + (p.mode === 'out' ? 'out ' : '') + '" aria-pressed="' + p.sel + '" aria-label="' + esc(T('photo') + ' ' + (i + 1)) + '"><img alt="" src="' + trackURL(URL.createObjectURL(p.thumb)) + '">' +
+        (p.mode === 'pin' ? '<i class="tg">📌</i>' : p.mode === 'out' ? '<i class="tg">🚫</i>' : p.sel ? '<i class="tg">✓</i>' : p.dup >= 0 ? '<i class="tg sm">' + esc(T('dupShort')) + '</i>' : '') + (p.faces.length ? '<i class="fc">🙂' + p.faces.length + '</i>' : '') + '</button>').join('') + '</div>' +
+      '<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="aClear" type="button">🧹 ' + esc(T('startOver')) + '</button></div>';
+  }
+  html += '</div><div class="card"><h3>⚙️ ' + esc(T('mosaicSettings')) + '</h3>' +
+    '<label class="f" for="aCount">' + esc(T('photosInCollage')) + ': <span class="val" id="aCountV">' + esc(st.count ? nf(st.count) : T('autoWord')) + '</span></label>' +
+    '<input type="range" id="aCount" min="0" max="15" value="' + (st.count || 0) + '"><div class="small muted">' + esc(T('countHint')) + '</div>' +
+    '<label class="f">' + esc(T('ratio')) + '</label><div class="seg" id="aRatio">' + Object.keys(AUTO_RATIOS).map(k => '<button type="button" data-v="' + k + '" class="' + (st.ratio === k ? 'on' : '') + '">' + k + '</button>').join('') + '</div>' +
+    '<div class="sw" style="margin-top:8px"><span>' + esc(T('faceDetect')) + '<br><small class="muted">' + esc(AS_faceState === 'fail' ? T('facesUnavailable') : T('faceDetectHint')) + '</small></span><label class="toggle"><input type="checkbox" id="aFaces" ' + (st.faces ? 'checked' : '') + ' aria-label="' + esc(T('faceDetect')) + '"><span></span></label></div></div>' +
+    '<button class="btn primary big" id="aMake" type="button"' + (AS ? '' : ' disabled') + '>✨ ' + esc(T('makeAuto')) + '</button></div>';
+  $('main').innerHTML = html;
+  if ($('aResume')) $('aResume').onclick = () => go('autoEd');
+  $('aPick').onclick = async () => { const f = await pickFiles('many'); if (!f.length) return; await analyseFiles(f); renderAutoSetup(); };
+  if ($('aClear')) $('aClear').onclick = () => { AS = null; renderAutoSetup(); };
+  document.querySelectorAll('#aThumbs [data-i]').forEach(b => b.onclick = () => {
+    const p = AS.ps[+b.dataset.i];
+    p.mode = p.sel ? 'out' : (p.mode === 'out' ? 'auto' : 'pin'); // selected → excluded → auto → pinned
+    reselect(); AS.prev = null; renderAutoSetup();
+  });
+  $('aCount').oninput = e => { st.count = +e.target.value; $('aCountV').textContent = st.count ? nf(st.count) : T('autoWord'); };
+  $('aCount').onchange = () => { saveS(); if (AS) { reselect(); AS.prev = null; renderAutoSetup(); } };
+  $('aRatio').querySelectorAll('button').forEach(b => b.onclick = () => { st.ratio = b.dataset.v; saveS(); if (AS) AS.prev = null; renderAutoSetup(); });
+  $('aFaces').onchange = e => { st.faces = e.target.checked; saveS(); if (st.faces && AS) toast(T('facesNextAdd')); };
+  $('aMake').onclick = () => buildAuto(false);
+}
+
+async function buildAuto(reseed) {
+  if (!AS || !AS.chosen.length) { toast(T('needPhotos'), true); return; }
+  if (reseed) AS.seed = (Math.random() * 4e9) >>> 0;
+  AS.ratio = S.auto.ratio;
+  const p = Prog.show(T('creatingAuto'), true);
+  try {
+    p.set(0.04, T('layingOut'));
+    AS.L = makeLayout(AS.ps, AS.chosen, AUTO_RATIOS[AS.ratio] || 4 / 3, AS.seed);
+    AS.LM = labelMap(AS.ps, AS.L);
+    await yieldUI();
+    const r = await renderAuto(AS.ps, AS.L, AS.LM, AUTO_RATIOS[AS.ratio] >= 1 ? 900 : 1300, p, 0.08, 0.96);
+    AS.prev = r; AS.saved = false; p.close();
+    if (cur.s === 'autoEd') { AEd.paint(); toast(T('newLayout')); } else go('autoEd');
+  } catch (e) {
+    p.close();
+    if (e && e.message === 'cancel') toast(T('cancelled')); else { logErr('auto: ' + (e && e.message)); toast(T('autoFail'), true); }
+  }
+}
+
+const AEd = {
+  open() {
+    const ed = $('editor');
+    ed.innerHTML = '<header class="top"><button class="homebtn" id="aeBack" type="button">' + (isRTL() ? '→ ' : '← ') + esc(T('back')) + '</button><h1>' + esc(T('autoTitle')) + '</h1></header>' +
+      '<div class="stage" id="astage" style="background:var(--bg)"><canvas id="aeCv" aria-label="' + esc(T('autoCanvas')) + '"></canvas><div class="hint" id="aeHint">' + esc(T('autoEdHint')) + '</div></div>' +
+      '<div class="dock"><div class="acts">' +
+      '<button class="btn" id="aeShuffle" type="button"><span class="i">🔀</span><span>' + esc(T('otherLayout')) + '</span></button>' +
+      '<button class="btn" id="aeSeams" type="button" aria-pressed="false"><span class="i">👁</span><span>' + esc(T('showSeams')) + '</span></button>' +
+      '<button class="btn ghost" id="aePhotos" type="button"><span class="i">🖼️</span><span>' + esc(T('photos')) + '</span></button>' +
+      '<button class="btn primary" id="aeExport" type="button"><span class="i">⬇️</span><span>' + esc(T('exportSave')) + '</span></button></div></div>';
+    ed.classList.remove('hidden');
+    this.cv = $('aeCv'); this.x = this.cv.getContext('2d'); this.seams = false;
+    $('aeBack').onclick = () => history.back();
+    $('aeShuffle').onclick = () => buildAuto(true);
+    $('aePhotos').onclick = () => history.back();
+    $('aeSeams').onclick = () => { this.seams = !this.seams; $('aeSeams').setAttribute('aria-pressed', this.seams); $('aeSeams').classList.toggle('primary', this.seams); this.paint(); };
+    $('aeExport').onclick = autoExport;
+    this.cv.addEventListener('click', e => this.tap(e.offsetX, e.offsetY));
+    if (this.ro) this.ro.disconnect();
+    this.ro = new ResizeObserver(() => this.resize()); this.ro.observe($('astage'));
+    clearTimeout(this._ht); this._ht = setTimeout(() => { const h = $('aeHint'); if (h) h.classList.add('fade'); }, 5000);
+    this.resize();
+  },
+  close() { if (this.ro) this.ro.disconnect(); this.ro = null; $('editor').classList.add('hidden'); $('editor').innerHTML = ''; },
+  resize() {
+    const st = $('astage'); if (!st || !AS || !AS.prev) return;
+    const r = st.getBoundingClientRect(), a = AS.prev.W / AS.prev.H, pad = 14;
+    let w = r.width - pad * 2, h = w / a; if (h > r.height - pad * 2) { h = r.height - pad * 2; w = h * a; }
+    this.w = w; this.h = h; this.dpr = Math.min(3, devicePixelRatio || 1);
+    Object.assign(this.cv.style, { inset: 'auto', width: w + 'px', height: h + 'px', left: (r.width - w) / 2 + 'px', top: (r.height - h) / 2 + 'px', boxShadow: 'var(--shadow)', borderRadius: '6px' });
+    this.cv.width = Math.round(w * this.dpr); this.cv.height = Math.round(h * this.dpr); this.paint();
+  },
+  paint() {
+    if (!this.x || !AS || !AS.prev) return;
+    const x = this.x, W = this.cv.width, H = this.cv.height;
+    if (this.cv.style.width && Math.abs(parseFloat(this.cv.style.width) / parseFloat(this.cv.style.height) - AS.prev.W / AS.prev.H) > 0.01) { this.resize(); return; }
+    x.setTransform(1, 0, 0, 1, 0, 0); x.imageSmoothingQuality = 'high'; x.drawImage(AS.prev.c, 0, 0, W, H);
+    if (this.seams) {
+      const LM = AS.LM, cw = W / LM.LW, ch = H / LM.LH; x.fillStyle = '#ffdd55';
+      for (let y = 0; y < LM.LH; y++) for (let xx = 0; xx < LM.LW; xx++) { const q = y * LM.LW + xx; if ((xx < LM.LW - 1 && LM.lab[q] !== LM.lab[q + 1]) || (y < LM.LH - 1 && LM.lab[q] !== LM.lab[q + LM.LW])) x.fillRect(xx * cw, y * ch, Math.max(1.5, cw), Math.max(1.5, ch)); }
+    }
+  },
+  tap(px, py) {
+    if (!AS || !AS.LM) return;
+    const LM = AS.LM, q = Math.min(LM.LH - 1, Math.floor(py / this.h * LM.LH)) * LM.LW + Math.min(LM.LW - 1, Math.floor(px / this.w * LM.LW));
+    const k = LM.lab[q], pi = AS.L.place[k].i, ph = AS.ps[pi];
+    const others = AS.ps.map((p, i) => i).filter(i => !AS.chosen.includes(i) && AS.ps[i].mode !== 'out');
+    const md = openModal({
+      title: T('thisPhoto'),
+      html: '<div class="row"><img alt="" style="width:96px;height:96px;object-fit:cover;border-radius:12px" src="' + trackURL(URL.createObjectURL(ph.thumb)) + '"><div class="small muted">' + esc(T('photoShare', { p: Math.round(LM.area[k] * 100) })) + (ph.faces.length ? '<br>🙂 ' + esc(T('facesFound', { n: ph.faces.length })) : '') + '</div></div>' +
+        (others.length ? '<label class="f">' + esc(T('replaceWith')) + '</label><div class="thumbs" id="aRep">' + others.slice(0, 40).map(i => '<button type="button" data-i="' + i + '"><img alt="" src="' + trackURL(URL.createObjectURL(AS.ps[i].thumb)) + '"></button>').join('') + '</div>' : ''),
+      actions: [
+        { label: '⬆️ ' + T('bigger'), cls: 'primary', onClick: () => { ph.boost = Math.min(2, ph.boost + 0.7); buildAuto(false); } },
+        { label: '⬇️ ' + T('smaller'), onClick: () => { ph.boost = Math.max(-0.8, ph.boost - 0.6); buildAuto(false); } },
+        { label: '🗑 ' + T('removePhoto'), cls: 'danger', onClick: () => { if (AS.chosen.length <= 1) { toast(T('needPhotos'), true); return false; } ph.mode = 'out'; AS.chosen = AS.chosen.filter(i => i !== pi); ph.sel = false; buildAuto(false); } }
+      ]
+    });
+    md.body.querySelectorAll('#aRep [data-i]').forEach(b => b.onclick = () => {
+      const ni = +b.dataset.i; AS.chosen = AS.chosen.map(i => i === pi ? ni : i); ph.sel = false; AS.ps[ni].sel = true; AS.ps[ni].mode = 'pin'; md.close(); buildAuto(false);
+    });
+  }
+};
+function autoExport() {
+  const ratio = AUTO_RATIOS[AS.ratio] || 4 / 3;
+  const longToH = long => ratio >= 1 ? Math.round(long / ratio) : long;
+  const sizes = isCoarse() ? { '1.6k': 1600, '2k': 2048, '2.4k': 2400 } : { '2k': 2048, '3k': 3072, '4k': 4096 };
+  if (!sizes[S.auto.size]) S.auto.size = '2k';
+  exportFlow({
+    sizes, sizeKey: () => S.auto.size, setSize: k => { S.auto.size = k; },
+    dims: long => { const H = longToH(long); return { W: Math.round(H * ratio), H }; },
+    render: (long, p) => renderAuto(AS.ps, AS.L, AS.LM, longToH(long), p, 0.02, 0.92).then(r => { if (S.sign && S.name) drawSignature(r.c.getContext('2d'), r.W, r.H); return r; }),
+    kind: 'autocollage', name: () => T('autoTitle'),
+    thumb: () => thumbOf(AS.prev.c, AS.prev.W, AS.prev.H),
+    onSaved: () => { AS.saved = true; }
+  });
+}
+
 /* ═══ CollageNest — LANG (5 languages). Missing key → English. ═══ */
 const LANG = {};
 LANG.en = {
@@ -2063,19 +2538,107 @@ LANG.ar = {
   diagIntro: 'تقرير تقني للدعم. لا يحتوي على صور أو محتوى شخصي.', sendReport: 'إرسال التقرير', clearErrors: 'مسح الأخطاء', askPersist: 'حماية التخزين'
 };
 
+/* AutoCollage strings (v1.1) */
+Object.assign(LANG.en, {
+  scr_auto: 'AutoCollage', autoTitle: 'AutoCollage', autoDesc: 'Pick a trip folder — get one seamless collage, faces kept whole',
+  autoIntro: 'Choose many photos from a trip or event. CollageNest picks the best ones, skips duplicates, keeps faces whole and blends everything into one seamless picture.',
+  pickTripPhotos: 'Choose photos', addMorePhotos: 'Add more photos', pickTripHint: 'Up to {n} photos · the more you give, the better the choice',
+  autoMax: 'Up to {n} photos at a time', analysingPhotos: 'Analysing photos', loadingFaces: 'Loading face detection (once)…', analysedN: 'Photo {n} of {t}',
+  facesUnavailable: 'Face detection is not available right now (offline?). Using colour and detail only.',
+  resumeAuto: 'Back to the last AutoCollage', autoPicked: 'Picked {k} of {n} photos', facesFound: '{n} faces', dupsFound: '{n} near-duplicates skipped',
+  autoTapHint: 'Tap a photo: ✓ chosen → 🚫 left out → automatic → 📌 always include.', dupShort: 'dup', startOver: 'Start over',
+  photosInCollage: 'Photos in the collage', autoWord: 'Automatic', countHint: '0 = automatic (usually 5–10). Fewer photos = bigger, clearer photos.',
+  faceDetect: 'Face detection', faceDetectHint: 'Keeps faces whole. The small model (~1.5 MB) is downloaded once and runs on your device.',
+  facesNextAdd: 'Faces will be detected for photos you add from now on', makeAuto: 'Create AutoCollage', needPhotos: 'Choose some photos first',
+  creatingAuto: 'Creating your AutoCollage', layingOut: 'Planning the layout…', blendingN: 'Blending photo {n} of {t}', finishing: 'Finishing…',
+  newLayout: 'New layout ready', autoFail: 'Could not create the collage. Try fewer photos.', autoCanvas: 'AutoCollage preview — tap a photo for options',
+  autoEdHint: 'Tap a photo to make it bigger, smaller, remove or replace it', otherLayout: 'Other layout', showSeams: 'Seams',
+  thisPhoto: 'This photo', photoShare: 'Takes about {p}% of the collage.', replaceWith: 'Replace with', bigger: 'Bigger', smaller: 'Smaller',
+  g7t: 'AutoCollage', g7: 'Give it a whole trip. It chooses the best photos, keeps faces whole and blends them into one seamless picture. Tap a photo to adjust it.'
+});
+Object.assign(LANG.he, {
+  scr_auto: 'AutoCollage', autoTitle: 'AutoCollage', autoDesc: 'בוחרים תיקייה מטיול — מקבלים קולאז׳ אחד חלק, בלי לחתוך פנים',
+  autoIntro: 'בחר הרבה תמונות מטיול או מאירוע. CollageNest בוחרת את הטובות, מדלגת על כפולות, שומרת על הפנים שלמות וממזגת הכול לתמונה אחת חלקה.',
+  pickTripPhotos: 'בחר תמונות', addMorePhotos: 'הוסף עוד תמונות', pickTripHint: 'עד {n} תמונות · ככל שיש יותר, הבחירה טובה יותר',
+  autoMax: 'עד {n} תמונות בכל פעם', analysingPhotos: 'מנתח תמונות', loadingFaces: 'טוען זיהוי פנים (פעם אחת)…', analysedN: 'תמונה {n} מתוך {t}',
+  facesUnavailable: 'זיהוי פנים לא זמין כרגע (אין אינטרנט?). עובד לפי צבע ופרטים בלבד.',
+  resumeAuto: 'חזרה ל-AutoCollage האחרון', autoPicked: 'נבחרו {k} מתוך {n} תמונות', facesFound: '{n} פנים', dupsFound: 'דולגו {n} כמעט-כפולות',
+  autoTapHint: 'הקש על תמונה: ✓ נבחרה ← 🚫 בחוץ ← אוטומטי ← 📌 תמיד בפנים.', dupShort: 'כפולה', startOver: 'התחל מחדש',
+  photosInCollage: 'תמונות בקולאז׳', autoWord: 'אוטומטי', countHint: '0 = אוטומטי (בדרך כלל 5–10). פחות תמונות = תמונות גדולות וברורות יותר.',
+  faceDetect: 'זיהוי פנים', faceDetectHint: 'שומר על הפנים שלמות. המודל הקטן (כ-1.5MB) יורד פעם אחת ורץ על המכשיר.',
+  facesNextAdd: 'מעכשיו יזוהו פנים בתמונות שתוסיף', makeAuto: 'צור AutoCollage', needPhotos: 'בחר קודם תמונות',
+  creatingAuto: 'יוצר את ה-AutoCollage שלך', layingOut: 'מתכנן את הפריסה…', blendingN: 'ממזג תמונה {n} מתוך {t}', finishing: 'מסיים…',
+  newLayout: 'פריסה חדשה מוכנה', autoFail: 'לא הצלחתי ליצור את הקולאז׳. נסה פחות תמונות.', autoCanvas: 'תצוגת ה-AutoCollage — הקש על תמונה לאפשרויות',
+  autoEdHint: 'הקש על תמונה כדי להגדיל, להקטין, להסיר או להחליף אותה', otherLayout: 'פריסה אחרת', showSeams: 'גבולות',
+  thisPhoto: 'התמונה הזו', photoShare: 'תופסת בערך {p}% מהקולאז׳.', replaceWith: 'החלף ב', bigger: 'הגדל', smaller: 'הקטן',
+  g7t: 'AutoCollage', g7: 'נותנים לו טיול שלם. הוא בוחר את התמונות הטובות, שומר על הפנים וממזג הכול לתמונה אחת חלקה. הקשה על תמונה מאפשרת לכוונן.'
+});
+Object.assign(LANG.ru, {
+  scr_auto: 'AutoCollage', autoTitle: 'AutoCollage', autoDesc: 'Выберите папку с поездки — получите один бесшовный коллаж, лица целы',
+  autoIntro: 'Выберите много фото с поездки или события. CollageNest отберёт лучшие, пропустит дубли, сохранит лица целыми и сольёт всё в одну бесшовную картину.',
+  pickTripPhotos: 'Выбрать фото', addMorePhotos: 'Добавить ещё фото', pickTripHint: 'До {n} фото · чем больше, тем лучше выбор',
+  autoMax: 'Не больше {n} фото за раз', analysingPhotos: 'Анализ фото', loadingFaces: 'Загрузка распознавания лиц (один раз)…', analysedN: 'Фото {n} из {t}',
+  facesUnavailable: 'Распознавание лиц сейчас недоступно (нет сети?). Используются только цвет и детали.',
+  resumeAuto: 'Вернуться к последнему AutoCollage', autoPicked: 'Выбрано {k} из {n} фото', facesFound: 'лиц: {n}', dupsFound: 'пропущено похожих: {n}',
+  autoTapHint: 'Нажмите на фото: ✓ выбрано → 🚫 исключено → авто → 📌 всегда включать.', dupShort: 'дубль', startOver: 'Начать заново',
+  photosInCollage: 'Фото в коллаже', autoWord: 'Авто', countHint: '0 = авто (обычно 5–10). Меньше фото = крупнее и чётче.',
+  faceDetect: 'Распознавание лиц', faceDetectHint: 'Сохраняет лица целыми. Маленькая модель (~1,5 МБ) скачивается один раз и работает на устройстве.',
+  facesNextAdd: 'Лица будут распознаваться в новых добавленных фото', makeAuto: 'Создать AutoCollage', needPhotos: 'Сначала выберите фото',
+  creatingAuto: 'Создаю ваш AutoCollage', layingOut: 'Планирую раскладку…', blendingN: 'Смешиваю фото {n} из {t}', finishing: 'Завершаю…',
+  newLayout: 'Новая раскладка готова', autoFail: 'Не удалось создать коллаж. Попробуйте меньше фото.', autoCanvas: 'Просмотр AutoCollage — нажмите на фото для настроек',
+  autoEdHint: 'Нажмите на фото, чтобы увеличить, уменьшить, убрать или заменить его', otherLayout: 'Другая раскладка', showSeams: 'Швы',
+  thisPhoto: 'Это фото', photoShare: 'Занимает около {p}% коллажа.', replaceWith: 'Заменить на', bigger: 'Крупнее', smaller: 'Мельче',
+  g7t: 'AutoCollage', g7: 'Дайте ему целую поездку. Он выберет лучшие фото, сохранит лица и сольёт всё в одну бесшовную картину. Нажмите на фото, чтобы настроить.'
+});
+Object.assign(LANG.es, {
+  scr_auto: 'AutoCollage', autoTitle: 'AutoCollage', autoDesc: 'Elige la carpeta de un viaje y obtén un collage continuo, sin cortar caras',
+  autoIntro: 'Elige muchas fotos de un viaje o evento. CollageNest escoge las mejores, omite duplicados, mantiene las caras enteras y lo funde todo en una sola imagen continua.',
+  pickTripPhotos: 'Elegir fotos', addMorePhotos: 'Añadir más fotos', pickTripHint: 'Hasta {n} fotos · cuantas más, mejor la elección',
+  autoMax: 'Hasta {n} fotos cada vez', analysingPhotos: 'Analizando fotos', loadingFaces: 'Cargando detección de caras (una vez)…', analysedN: 'Foto {n} de {t}',
+  facesUnavailable: 'La detección de caras no está disponible ahora (¿sin conexión?). Se usan solo color y detalle.',
+  resumeAuto: 'Volver al último AutoCollage', autoPicked: '{k} de {n} fotos elegidas', facesFound: '{n} caras', dupsFound: '{n} casi duplicadas omitidas',
+  autoTapHint: 'Toca una foto: ✓ elegida → 🚫 fuera → automático → 📌 incluir siempre.', dupShort: 'dup.', startOver: 'Empezar de nuevo',
+  photosInCollage: 'Fotos en el collage', autoWord: 'Automático', countHint: '0 = automático (normalmente 5–10). Menos fotos = fotos más grandes y claras.',
+  faceDetect: 'Detección de caras', faceDetectHint: 'Mantiene las caras enteras. El modelo pequeño (~1,5 MB) se descarga una vez y funciona en tu dispositivo.',
+  facesNextAdd: 'Se detectarán caras en las fotos que añadas a partir de ahora', makeAuto: 'Crear AutoCollage', needPhotos: 'Primero elige algunas fotos',
+  creatingAuto: 'Creando tu AutoCollage', layingOut: 'Planificando la disposición…', blendingN: 'Fundiendo foto {n} de {t}', finishing: 'Terminando…',
+  newLayout: 'Nueva disposición lista', autoFail: 'No se pudo crear el collage. Prueba con menos fotos.', autoCanvas: 'Vista del AutoCollage: toca una foto para ver opciones',
+  autoEdHint: 'Toca una foto para agrandarla, reducirla, quitarla o cambiarla', otherLayout: 'Otra disposición', showSeams: 'Uniones',
+  thisPhoto: 'Esta foto', photoShare: 'Ocupa cerca del {p}% del collage.', replaceWith: 'Cambiar por', bigger: 'Más grande', smaller: 'Más pequeña',
+  g7t: 'AutoCollage', g7: 'Dale un viaje entero. Elige las mejores fotos, mantiene las caras y lo funde todo en una imagen continua. Toca una foto para ajustarla.'
+});
+Object.assign(LANG.ar, {
+  scr_auto: 'AutoCollage', autoTitle: 'AutoCollage', autoDesc: 'اختر مجلد رحلة واحصل على كولاج واحد متصل دون قص الوجوه',
+  autoIntro: 'اختر صورًا كثيرة من رحلة أو مناسبة. يختار CollageNest أفضلها، ويتخطى المكررة، ويحافظ على الوجوه كاملة، ويدمج كل شيء في صورة واحدة متصلة.',
+  pickTripPhotos: 'اختر الصور', addMorePhotos: 'أضف صورًا أخرى', pickTripHint: 'حتى {n} صورة · كلما زادت كان الاختيار أفضل',
+  autoMax: 'حتى {n} صورة في كل مرة', analysingPhotos: 'تحليل الصور', loadingFaces: 'تحميل كشف الوجوه (مرة واحدة)…', analysedN: 'صورة {n} من {t}',
+  facesUnavailable: 'كشف الوجوه غير متاح الآن (لا اتصال؟). يتم الاعتماد على اللون والتفاصيل فقط.',
+  resumeAuto: 'العودة إلى آخر AutoCollage', autoPicked: 'تم اختيار {k} من {n} صورة', facesFound: '{n} وجوه', dupsFound: 'تُخطّيت {n} صور شبه مكررة',
+  autoTapHint: 'اضغط على صورة: ✓ مختارة ← 🚫 مستبعدة ← تلقائي ← 📌 تضمين دائمًا.', dupShort: 'مكررة', startOver: 'البدء من جديد',
+  photosInCollage: 'عدد الصور في الكولاج', autoWord: 'تلقائي', countHint: '0 = تلقائي (عادة 5–10). صور أقل = صور أكبر وأوضح.',
+  faceDetect: 'كشف الوجوه', faceDetectHint: 'يحافظ على الوجوه كاملة. يُنزَّل النموذج الصغير (~1.5 ميغابايت) مرة واحدة ويعمل على جهازك.',
+  facesNextAdd: 'سيتم كشف الوجوه في الصور التي تضيفها من الآن', makeAuto: 'إنشاء AutoCollage', needPhotos: 'اختر بعض الصور أولًا',
+  creatingAuto: 'جارٍ إنشاء AutoCollage', layingOut: 'تخطيط الترتيب…', blendingN: 'دمج الصورة {n} من {t}', finishing: 'جارٍ الإنهاء…',
+  newLayout: 'ترتيب جديد جاهز', autoFail: 'تعذّر إنشاء الكولاج. جرّب عددًا أقل من الصور.', autoCanvas: 'معاينة AutoCollage — اضغط على صورة للخيارات',
+  autoEdHint: 'اضغط على صورة لتكبيرها أو تصغيرها أو إزالتها أو استبدالها', otherLayout: 'ترتيب آخر', showSeams: 'الحدود',
+  thisPhoto: 'هذه الصورة', photoShare: 'تشغل نحو {p}% من الكولاج.', replaceWith: 'استبدال بـ', bigger: 'أكبر', smaller: 'أصغر',
+  g7t: 'AutoCollage', g7: 'أعطه رحلة كاملة. يختار أفضل الصور ويحافظ على الوجوه ويدمج كل شيء في صورة واحدة متصلة. اضغط على صورة لتعديلها.'
+});
+
 /* ═══ CollageNest — screens: home, libraries, gallery, settings, about, guide, diagnostics, router, init ═══ */
 
 /* ── router (Android back button friendly) ── */
 const SCREENS = {
   home: renderHome, mosaic: renderMosaicSetup, collage: renderCollageSetup, libs: renderLibs, lib: renderLib,
-  gallery: renderGallery, view: renderViewer, settings: renderSettings, about: renderAbout, guide: renderGuide, diag: renderDiag
+  gallery: renderGallery, auto: renderAutoSetup, view: renderViewer, settings: renderSettings, about: renderAbout, guide: renderGuide, diag: renderDiag
 };
 let cur = { s: 'home', a: null };
 function go(s, a, replace) { const st = { s, a: a == null ? null : a }; if (replace) history.replaceState(st, ''); else history.pushState(st, ''); return show(st); }
 async function show(st) {
-  if (!st || (!SCREENS[st.s] && st.s !== 'editor' && st.s !== 'collageEd')) st = { s: 'home', a: null };
+  if (!st || (!SCREENS[st.s] && st.s !== 'editor' && st.s !== 'collageEd' && st.s !== 'autoEd')) st = { s: 'home', a: null };
   if (cur.s === 'editor' && st.s !== 'editor') Ed.close();
   if (cur.s === 'collageEd' && st.s !== 'collageEd') CEd.close();
+  if (cur.s === 'autoEd' && st.s !== 'autoEd') AEd.close();
   if (st.s === 'lib' && (cur.s !== 'lib' || cur.a !== st.a)) { libSel = null; libShowAll = false; }
   revokeURLs(); cur = st;
   const home = st.s === 'home';
@@ -2083,6 +2646,7 @@ async function show(st) {
   $('title').innerHTML = home ? '<span class="brand">Collage</span>Nest' : esc(T('scr_' + st.s));
   if (st.s === 'editor') { if (!MS) return go('mosaic', null, true); Ed.open(); return; }
   if (st.s === 'collageEd') { if (!CS) return go('collage', null, true); CEd.open(); return; }
+  if (st.s === 'autoEd') { if (!AS || !AS.prev) return go('auto', null, true); AEd.open(); return; }
   try { await SCREENS[st.s](st.a); } catch (e) { logErr('screen ' + st.s + ': ' + (e && e.message)); $('main').innerHTML = '<div class="empty"><span class="em">⚠️</span>' + esc(T('screenFail')) + '</div>'; }
   window.scrollTo(0, 0);
 }
@@ -2102,6 +2666,7 @@ async function renderHome() {
     (S.name ? '<div class="hello">' + esc(T('hello', { name: S.name })) + '</div>' : '') + '</div>' +
     '<div class="tiles">' +
     '<button class="tile big" type="button" data-go="mosaic"><span class="em">🧩</span><b>' + esc(T('mosaicTitle')) + '</b><small>' + esc(T('mosaicDesc')) + '</small></button>' +
+    '<button class="tile big" type="button" data-go="auto"><span class="em">✨</span><b>' + esc(T('autoTitle')) + '</b><small>' + esc(T('autoDesc')) + '</small></button>' +
     '<button class="tile" type="button" data-go="collage"><span class="em">🖼️</span><b>' + esc(T('collage')) + '</b><small>' + esc(T('collageDesc')) + '</small></button>' +
     '<button class="tile" type="button" data-go="libs"><span class="em">📚</span><b>' + esc(T('scr_libs')) + '</b><small>' + esc(T('nLibs', { n: nf(libs.length) })) + '</small></button>' +
     '<button class="tile" type="button" data-go="gallery"><span class="em">🗂️</span><b>' + esc(T('scr_gallery')) + '</b><small>' + esc(T('nItems', { n: nf(gal.length) })) + '</small></button>' +
@@ -2223,7 +2788,7 @@ async function renderGallery() {
   const items = (await DB.all('gallery')).sort((a, b) => b.created - a.created);
   let html = '<div class="screen">';
   if (!items.length) html += '<div class="empty"><span class="em">🗂️</span>' + esc(T('galEmpty')) + '</div><button class="btn primary big" type="button" data-go="mosaic">🧩 ' + esc(T('makeMosaic')) + '</button>';
-  else html += '<p class="muted small">' + esc(T('galNote')) + '</p><div class="gal">' + items.map(it => '<div class="lib" role="button" tabindex="0" data-g="' + it.id + '"><div class="cov"><img alt="" src="' + trackURL(URL.createObjectURL(it.thumb || it.blob)) + '"></div><div class="meta"><b>' + (it.kind === 'mosaic' ? '🧩 ' : '🖼️ ') + esc(it.name) + '</b><small>' + esc(df(it.created)) + '</small></div><button class="ed" type="button" data-ed="' + it.id + '" aria-label="' + esc(T('edit')) + '">✏️</button></div>').join('') + '</div>';
+  else html += '<p class="muted small">' + esc(T('galNote')) + '</p><div class="gal">' + items.map(it => '<div class="lib" role="button" tabindex="0" data-g="' + it.id + '"><div class="cov"><img alt="" src="' + trackURL(URL.createObjectURL(it.thumb || it.blob)) + '"></div><div class="meta"><b>' + (it.kind === 'mosaic' ? '🧩 ' : it.kind === 'autocollage' ? '✨ ' : '🖼️ ') + esc(it.name) + '</b><small>' + esc(df(it.created)) + '</small></div><button class="ed" type="button" data-ed="' + it.id + '" aria-label="' + esc(T('edit')) + '">✏️</button></div>').join('') + '</div>';
   $('main').innerHTML = html + '</div>';
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
   document.querySelectorAll('[data-g]').forEach(el => {
@@ -2346,7 +2911,7 @@ async function wipeAll() {
 }
 
 /* ── guide / onboarding ── */
-const GUIDE = [['👋', 'g1t', 'g1'], ['🧩', 'g2t', 'g2'], ['📚', 'g3t', 'g3'], ['🔍', 'g4t', 'g4'], ['🖼️', 'g5t', 'g5'], ['🔒', 'g6t', 'g6']];
+const GUIDE = [['👋', 'g1t', 'g1'], ['🧩', 'g2t', 'g2'], ['📚', 'g3t', 'g3'], ['🔍', 'g4t', 'g4'], ['✨', 'g7t', 'g7'], ['🖼️', 'g5t', 'g5'], ['🔒', 'g6t', 'g6']];
 function onboarding() {
   let i = 0;
   const draw = () => '<div class="guide-em">' + GUIDE[i][0] + '</div><h3 style="text-align:center">' + esc(T(GUIDE[i][1])) + '</h3><p style="text-align:center" class="muted">' + esc(T(GUIDE[i][2])) + '</p><div class="steps">' + GUIDE.map((g, k) => '<i class="' + (k === i ? 'on' : '') + '"></i>').join('') + '</div>' +
@@ -2405,6 +2970,7 @@ async function diagReport() {
     'OffscreenCanvas: ' + (typeof OffscreenCanvas !== 'undefined') + ' · createImageBitmap: ' + (typeof createImageBitmap === 'function') + ' · Worker: ' + (typeof Worker !== 'undefined'),
     'Share files: ' + !!(navigator.canShare) + ' · crossOriginIsolated: ' + !!self.crossOriginIsolated,
     'Libraries: ' + libs.length + ' · tiles: ' + libs.reduce((s, l) => s + (l.count || 0), 0) + ' · gallery: ' + gal.length,
+    'Face detection: ' + AS_faceState + (window.faceapi && window.faceapi.tf ? ' (' + window.faceapi.tf.getBackend() + ')' : '') + ' · AutoCollage: ' + (AS ? AS.ps.length + ' photos' : 'none'),
     'Mosaic session: ' + (MS ? MS.cols + 'x' + MS.rows + ' / ' + MS.N + ' tiles' : 'none'),
     '— Last errors (' + errs.length + ') —'
   ].concat(errs.map(e => e.t + ' ' + e.m + (e.s ? ' @' + e.s + ':' + e.l : '')));
