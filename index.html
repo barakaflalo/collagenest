@@ -1,0 +1,2448 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl" data-mode="night">
+<head>
+<meta charset="utf-8">
+<script>
+/* AppNest: old GitHub address -> own Cloudflare Pages address (runs only on github.io) */
+(function(){try{if(location.hostname==='barakaflalo.github.io'){location.replace('https://collagenest.pages.dev/'+location.search+location.hash);}}catch(e){}})();
+</script>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; worker-src 'self' blob:; img-src 'self' blob: data:; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' blob: data: https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="theme-color" content="#0b0b0c">
+<meta name="description" content="CollageNest · AppNest — photo mosaic & collage maker. Everything runs on your device.">
+<meta property="og:title" content="CollageNest · AppNest">
+<meta property="og:description" content="פסיפס תמונות וקולאז׳ — הכול על המכשיר שלך">
+<meta property="og:image" content="icon-512.png">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>CollageNest · AppNest</title>
+<style>
+:root{
+  --bg:#0b0b0c;--bg2:#141416;--bg3:#1c1b1f;--line:#2c2820;--text:#f3efe6;--muted:#a39d8f;
+  --accent:#d4af37;--accent2:#f0d278;--onaccent:#111;--danger:#ff5d5d;--ok:#4cd28a;
+  --radius:16px;--shadow:0 6px 24px rgba(0,0,0,.35);
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Hebrew","Noto Sans Arabic","Noto Sans",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:16px;line-height:1.45;min-height:100vh;min-height:100dvh;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--accent)}
+.skip{position:absolute;inset-inline-start:-9999px;top:0;background:var(--accent);color:var(--onaccent);padding:10px 14px;z-index:999;border-radius:0 0 10px 10px}
+.skip:focus{inset-inline-start:12px}
+:focus-visible{outline:3px solid var(--accent2);outline-offset:2px}
+.hidden{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* header */
+.top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top h1{flex:1;margin:0;font-size:18px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top h1 .brand{color:var(--accent)}
+.homebtn{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 16px;border-radius:999px;border:1.5px solid var(--accent);background:transparent;color:var(--accent);font-weight:700;font-size:16px}
+.homebtn:active{transform:scale(.97)}
+.icobtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--bg2);display:inline-flex;align-items:center;justify-content:center;font-size:20px;line-height:1}
+.icobtn:active{transform:scale(.95)}
+
+/* screens */
+main{max-width:820px;margin:0 auto;padding:14px 14px calc(90px + env(safe-area-inset-bottom))}
+.screen{animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* home */
+.hero{text-align:center;padding:18px 8px 10px}
+.hero .logo{width:84px;height:84px;border-radius:22px;box-shadow:var(--shadow);border:1px solid var(--line)}
+.hero h2{margin:10px 0 2px;font-size:28px;letter-spacing:.5px}
+.hero h2 span{color:var(--accent)}
+.hero p{margin:0;color:var(--muted)}
+.hello{color:var(--accent2);font-weight:600;margin-top:6px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:start;padding:16px;border-radius:var(--radius);border:1px solid var(--line);background:var(--bg2);min-height:112px;transition:transform .12s,border-color .2s}
+.tile:hover{border-color:var(--accent)}
+.tile:active{transform:scale(.98)}
+.tile .em{font-size:30px;line-height:1}
+.tile b{font-size:17px}
+.tile small{color:var(--muted);font-size:13px}
+.tile.big{grid-column:1/-1;min-height:130px;border:1.5px solid var(--accent);background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 14%,var(--bg2)),var(--bg2) 70%)}
+.tile.big b{font-size:20px;color:var(--accent)}
+.quick{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg2);font-size:14px}
+.chip.on{border-color:var(--accent);color:var(--accent)}
+.badge{display:block;text-align:center;margin:26px auto 6px;color:var(--muted);font-size:12px;letter-spacing:.4px}
+.badge b{color:var(--accent)}
+
+/* cards & forms */
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.card h3{margin:0 0 10px;font-size:17px;display:flex;align-items:center;gap:8px}
+.card h3 .num{display:inline-flex;width:26px;height:26px;border-radius:50%;align-items:center;justify-content:center;background:var(--accent);color:var(--onaccent);font-size:14px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row.sp{justify-content:space-between}
+.grow{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;min-height:46px;padding:0 18px;border-radius:12px;border:1.5px solid var(--accent);background:transparent;color:var(--accent);font-weight:700;font-size:15px}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--accent);color:var(--onaccent)}
+.btn.big{min-height:58px;font-size:18px;width:100%;border-radius:14px}
+.btn.ghost{border-color:var(--line);color:var(--text)}
+.btn.danger{border-color:var(--danger);color:var(--danger)}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.btn.sm{min-height:38px;padding:0 12px;font-size:14px}
+label.f{display:block;margin:12px 0 6px;font-weight:600;font-size:14px}
+input[type=text],input[type=number],select,textarea{width:100%;min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg3);padding:0 12px}
+textarea{padding:10px 12px;min-height:90px}
+input[type=range]{width:100%;accent-color:var(--accent);height:30px}
+input[type=color]{width:46px;height:40px;border:1px solid var(--line);border-radius:10px;background:var(--bg3);padding:2px}
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{min-height:42px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg3);font-size:14px}
+.seg button.on{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--bg3))}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px}
+.toggle{position:relative;width:52px;height:30px;flex:none}
+.toggle input{opacity:0;width:100%;height:100%;margin:0;position:absolute;cursor:pointer;z-index:1}
+.toggle span{position:absolute;inset:0;border-radius:99px;background:var(--bg3);border:1px solid var(--line);transition:.2s}
+.toggle span::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:22px;height:22px;border-radius:50%;background:var(--muted);transition:.2s}
+.toggle input:checked+span{background:color-mix(in srgb,var(--accent) 35%,var(--bg3));border-color:var(--accent)}
+.toggle input:checked+span::after{background:var(--accent);inset-inline-start:25px}
+.val{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+.note{border-inline-start:3px solid var(--accent);padding:8px 12px;background:var(--bg3);border-radius:8px;font-size:14px;color:var(--muted);margin:10px 0}
+.warn{border-inline-start-color:var(--danger)}
+.pickbox{display:flex;align-items:center;gap:12px;min-height:90px;padding:12px;border:1.5px dashed var(--line);border-radius:14px;background:var(--bg3);width:100%;text-align:start}
+.pickbox:hover{border-color:var(--accent)}
+.pickbox img,.pickbox canvas{width:72px;height:72px;object-fit:cover;border-radius:10px;flex:none}
+.pickbox .em{font-size:30px;width:72px;text-align:center;flex:none}
+
+/* lists */
+.libs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.lib{position:relative;border:1px solid var(--line);border-radius:14px;background:var(--bg2);overflow:hidden;text-align:start;padding:0}
+.lib.sel{border:2px solid var(--accent)}
+.lib .cov{display:grid;grid-template-columns:1fr 1fr;aspect-ratio:1;background:var(--bg3)}
+.lib .cov img{width:100%;height:100%;object-fit:cover;display:block}
+.lib .meta{padding:8px 10px}
+.lib .meta b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib .meta small{color:var(--muted)}
+.lib .ed{position:absolute;top:6px;inset-inline-end:6px;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:color-mix(in srgb,var(--bg) 70%,transparent);font-size:16px}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:4px}
+.thumbs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;display:block;background:var(--bg3)}
+.thumbs button{padding:0;border:0;background:none;position:relative}
+.thumbs button.sel img{outline:3px solid var(--danger);outline-offset:-3px;opacity:.6}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.gal .lib .cov{display:block}
+.gal .lib .cov img{aspect-ratio:1}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+.empty .em{font-size:44px;display:block;margin-bottom:6px}
+
+/* editor */
+.editor{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;background:var(--bg)}
+.editor .top{position:relative}
+.stage{position:relative;flex:1;min-height:0;overflow:hidden;background:repeating-conic-gradient(var(--bg2) 0 25%,var(--bg3) 0 50%) 0 0/24px 24px;touch-action:none}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.zoomctl{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;flex-direction:column;gap:8px;z-index:2}
+.zoomctl .icobtn{background:color-mix(in srgb,var(--bg) 80%,transparent)}
+.hint{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:color-mix(in srgb,var(--bg) 85%,transparent);border:1px solid var(--line);padding:6px 12px;border-radius:99px;font-size:13px;color:var(--muted);pointer-events:none;white-space:nowrap;z-index:2;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.dock{border-top:1px solid var(--line);background:var(--bg2);padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
+.dock .acts{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px}
+.dock .acts .btn{flex-direction:column;gap:2px;min-height:58px;padding:4px 4px;font-size:12.5px;line-height:1.15;white-space:normal;text-align:center;min-width:0}
+.dock .acts .btn .i{font-size:19px;line-height:1}
+.hint{transition:opacity .6s}.hint.fade{opacity:0}
+.panel{max-height:42vh;overflow:auto;padding:4px 2px 8px}
+.panel .grid2{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}
+@media (max-width:420px){.panel .grid2{grid-template-columns:1fr}}
+.panel label.f{margin:8px 0 2px}
+
+/* sheet & modal */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:flex-end;justify-content:center;animation:fade .15s}
+.scrim.center{align-items:center;padding:16px}
+.sheet{width:100%;max-width:720px;max-height:86vh;overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:var(--shadow)}
+.scrim.center .sheet{border-radius:20px;max-width:520px}
+.sheet h3{margin:0 0 10px;font-size:18px}
+.sheet .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.sheet .acts .btn{flex:1}
+.alts{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px}
+.alts button{padding:0;border:2px solid transparent;border-radius:10px;background:var(--bg3);overflow:hidden;position:relative}
+.alts button.cur{border-color:var(--accent)}
+.alts canvas{width:100%;display:block}
+.alts small{position:absolute;bottom:2px;inset-inline-start:4px;font-size:10px;background:rgba(0,0,0,.6);color:#fff;padding:0 4px;border-radius:4px}
+.steps{display:flex;gap:6px;justify-content:center;margin:12px 0 4px}
+.steps i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.steps i.on{background:var(--accent);width:22px;border-radius:9px}
+.guide-em{font-size:52px;text-align:center;margin:6px 0}
+.themes{display:flex;gap:10px;flex-wrap:wrap}
+.themes button{width:52px;height:52px;border-radius:14px;border:2px solid var(--line);position:relative;overflow:hidden}
+.themes button.on{border-color:var(--text)}
+.themes button span{position:absolute;inset:0}
+
+/* progress & toast */
+.prog{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;padding:20px}
+.prog .box{width:100%;max-width:420px;background:var(--bg2);border:1px solid var(--accent);border-radius:18px;padding:20px;text-align:center}
+.bar{height:10px;border-radius:99px;background:var(--bg3);overflow:hidden;margin:14px 0 8px;border:1px solid var(--line)}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .15s}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:90;background:var(--bg3);border:1px solid var(--accent);color:var(--text);padding:12px 18px;border-radius:14px;box-shadow:var(--shadow);max-width:92vw;font-size:15px;animation:fade .2s}
+.toast.err{border-color:var(--danger)}
+.banner{background:color-mix(in srgb,var(--danger) 18%,var(--bg2));border:1px solid var(--danger);padding:10px 14px;border-radius:12px;margin-bottom:12px;font-size:14px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:14px}
+.kv b{color:var(--muted);font-weight:600}
+pre.diag{white-space:pre-wrap;word-break:break-all;background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;max-height:40vh;overflow:auto;direction:ltr;text-align:left}
+.tpls{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:8px}
+.tpls button{padding:4px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg3);aspect-ratio:1}
+.tpls button.on{border-color:var(--accent)}
+.tpls svg{width:100%;height:100%;display:block}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.swatches button{width:36px;height:36px;border-radius:50%;border:2px solid var(--line)}
+.swatches button.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--bg2),0 0 0 4px var(--accent)}
+.viewer img{max-width:100%;max-height:62vh;display:block;margin:0 auto;border-radius:12px;border:1px solid var(--line)}
+.lang-sel{max-width:180px}
+</style>
+</head>
+<body>
+<a class="skip" href="#main" id="skipLink">Skip</a>
+<header class="top" id="topbar">
+  <button class="homebtn hidden" id="homeBtn" type="button"></button>
+  <h1 id="title"><span class="brand">Collage</span>Nest</h1>
+  <button class="icobtn" id="themeBtn" type="button">🎨</button>
+  <button class="icobtn" id="modeBtn" type="button">🌙</button>
+</header>
+<main id="main" tabindex="-1"></main>
+<div id="editor" class="editor hidden" role="region"></div>
+<div id="modalRoot"></div>
+<div id="progRoot"></div>
+<div id="toastRoot" aria-live="polite"></div>
+<input type="file" id="fileOne" accept="image/*,.heic,.heif" class="hidden">
+<input type="file" id="fileMany" accept="image/*,.heic,.heif" multiple class="hidden">
+<input type="file" id="fileDir" webkitdirectory multiple class="hidden">
+<input type="file" id="fileJson" accept="application/json,.json" class="hidden">
+<script>
+/* ═══ CollageNest · AppNest — core (storage, i18n helpers, UI shell) ═══ */
+'use strict';
+const APP_VERSION = '1.0.0';
+const STORE_URL = 'https://appnest-store.pages.dev';
+const FEEDBACK_MAIL = 'appnest55@gmail.com';
+
+/* ── error log (first, so it catches everything) ── */
+function logErr(msg, src, line) {
+  try {
+    const a = JSON.parse(localStorage.getItem('cn_errors') || '[]');
+    a.unshift({ m: String(msg).slice(0, 300), s: src ? String(src).split('/').pop() : '', l: line || 0, t: new Date().toISOString() });
+    localStorage.setItem('cn_errors', JSON.stringify(a.slice(0, 10)));
+  } catch (e) {}
+}
+addEventListener('error', e => logErr(e.message, e.filename, e.lineno));
+addEventListener('unhandledrejection', e => logErr('Promise: ' + ((e.reason && e.reason.message) || e.reason)));
+
+/* ── storage shim: localStorage → memory ── */
+const Store = (() => {
+  const mem = {}; let ok = true;
+  try { localStorage.setItem('cn__t', '1'); localStorage.removeItem('cn__t'); } catch (e) { ok = false; }
+  return {
+    ok: () => ok,
+    get(k, d) { try { const v = ok ? localStorage.getItem('cn_' + k) : mem[k]; return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) {
+      const s = JSON.stringify(v);
+      if (ok) { try { localStorage.setItem('cn_' + k, s); return true; } catch (e) { mem[k] = s; toast(T('saveFail'), true); return false; } }
+      mem[k] = s; return true;
+    },
+    del(k) { try { ok ? localStorage.removeItem('cn_' + k) : delete mem[k]; } catch (e) {} },
+    clearAll() {
+      try { Object.keys(localStorage).filter(k => k.startsWith('cn_')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+      for (const k in mem) delete mem[k];
+    }
+  };
+})();
+
+/* ── IndexedDB: libs / tiles (Blob) / gallery (Blob) → memory fallback ── */
+const DB = (() => {
+  let db = null, mem = null;
+  const STORES = ['libs', 'tiles', 'gallery'];
+  const initMem = () => { const m = {}; STORES.forEach(s => m[s] = new Map()); return m; };
+  function open() {
+    return new Promise(res => {
+      if (!('indexedDB' in self)) { mem = initMem(); return res(false); }
+      let r;
+      try { r = indexedDB.open('collagenest', 1); } catch (e) { mem = initMem(); return res(false); }
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        if (!d.objectStoreNames.contains('libs')) d.createObjectStore('libs', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('tiles')) { const s = d.createObjectStore('tiles', { keyPath: 'id' }); s.createIndex('lib', 'libId'); }
+        if (!d.objectStoreNames.contains('gallery')) d.createObjectStore('gallery', { keyPath: 'id' });
+      };
+      r.onsuccess = () => { db = r.result; res(true); };
+      r.onerror = () => { mem = initMem(); res(false); };
+    });
+  }
+  function run(store, mode, fn) {
+    return new Promise((res, rej) => {
+      let t; try { t = db.transaction(store, mode); } catch (e) { return rej(e); }
+      const r = fn(t.objectStore(store)); let out;
+      if (r) r.onsuccess = () => { out = r.result; };
+      t.oncomplete = () => res(out);
+      t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  }
+  return {
+    open, isMem: () => !!mem,
+    put(store, o) { if (mem) { mem[store].set(o.id, o); return Promise.resolve(); } return run(store, 'readwrite', s => s.put(o)); },
+    putMany(store, arr) {
+      if (mem) { arr.forEach(o => mem[store].set(o.id, o)); return Promise.resolve(); }
+      return new Promise((res, rej) => {
+        const t = db.transaction(store, 'readwrite'), s = t.objectStore(store);
+        arr.forEach(o => s.put(o));
+        t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+      });
+    },
+    get(store, id) { if (mem) return Promise.resolve(mem[store].get(id)); return run(store, 'readonly', s => s.get(id)); },
+    del(store, id) { if (mem) { mem[store].delete(id); return Promise.resolve(); } return run(store, 'readwrite', s => s.delete(id)); },
+    all(store) { if (mem) return Promise.resolve([...mem[store].values()]); return run(store, 'readonly', s => s.getAll()); },
+    byLib(libId) {
+      if (mem) return Promise.resolve([...mem.tiles.values()].filter(t => t.libId === libId));
+      return run('tiles', 'readonly', s => s.index('lib').getAll(libId));
+    },
+    countLib(libId) {
+      if (mem) return Promise.resolve([...mem.tiles.values()].filter(t => t.libId === libId).length);
+      return run('tiles', 'readonly', s => s.index('lib').count(libId));
+    },
+    delTiles(ids) {
+      if (mem) { ids.forEach(i => mem.tiles.delete(i)); return Promise.resolve(); }
+      return new Promise((res, rej) => {
+        const t = db.transaction('tiles', 'readwrite'), s = t.objectStore('tiles');
+        ids.forEach(i => s.delete(i));
+        t.oncomplete = () => res(); t.onerror = () => rej(t.error);
+      });
+    },
+    async delLib(libId) {
+      const tiles = await this.byLib(libId);
+      await this.delTiles(tiles.map(t => t.id));
+      await this.del('libs', libId);
+    },
+    clear(store) { if (mem) { mem[store].clear(); return Promise.resolve(); } return run(store, 'readwrite', s => s.clear()); }
+  };
+})();
+
+/* ── settings ── */
+function detectLang() {
+  const l = (navigator.language || 'he').slice(0, 2).toLowerCase();
+  return ['he', 'en', 'ru', 'es', 'ar'].includes(l) ? l : (l === 'iw' ? 'he' : 'en');
+}
+const DEF_S = {
+  lang: detectLang(), theme: 'gold', mode: 'night', name: '', fmt: 'jpg', onboarded: false,
+  mosaic: { cols: 50, aspect: '1:1', variety: 'med', flip: true, tint: 20, overlay: 0, grout: 0, groutColor: '#000000', shape: 'square', size: '4k' },
+  collage: { ratio: '1:1', gap: 2, radius: 2, bg: '#ffffff', size: 3072 }
+};
+let S = Object.assign({}, DEF_S, Store.get('settings', {}));
+S.mosaic = Object.assign({}, DEF_S.mosaic, S.mosaic || {});
+S.collage = Object.assign({}, DEF_S.collage, S.collage || {});
+function saveS() { Store.set('settings', S); }
+
+/* ── i18n ── */
+function T(k, v) {
+  const d = (LANG[S.lang] && LANG[S.lang][k] != null) ? LANG[S.lang][k] : (LANG.en[k] != null ? LANG.en[k] : k);
+  return v ? String(d).replace(/\{(\w+)\}/g, (m, n) => v[n] != null ? v[n] : m) : d;
+}
+const isRTL = () => S.lang === 'he' || S.lang === 'ar';
+function nf(n) { try { return new Intl.NumberFormat(S.lang).format(n); } catch (e) { return String(n); } }
+function df(ts) { try { return new Date(ts).toLocaleDateString(S.lang, { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return new Date(ts).toDateString(); } }
+
+/* ── tiny helpers ── */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const yieldUI = () => new Promise(r => setTimeout(r, 0));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const isCoarse = () => matchMedia('(pointer:coarse)').matches;
+
+function mkCanvas(w, h) {
+  if (typeof OffscreenCanvas !== 'undefined') { try { const c = new OffscreenCanvas(w, h); if (c.getContext('2d')) return c; } catch (e) {} }
+  const c = document.createElement('canvas'); c.width = w; c.height = h; return c;
+}
+function canvasToBlob(c, type, q) {
+  if (c.convertToBlob) return c.convertToBlob({ type, quality: q });
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('toBlob')), type, q));
+}
+
+/* ── toast / progress ── */
+let toastTimer = 0;
+function toast(msg, err) {
+  const r = $('toastRoot'); if (!r) return;
+  r.innerHTML = '<div class="toast' + (err ? ' err' : '') + '" role="status">' + esc(msg) + '</div>';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { r.innerHTML = ''; }, err ? 4200 : 2600);
+}
+const Prog = {
+  cur: null,
+  show(title, cancellable) {
+    const st = { cancelled: false };
+    $('progRoot').innerHTML = '<div class="prog" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><div class="box"><b id="progT">' + esc(title) +
+      '</b><div class="bar"><i id="progBar"></i></div><div class="small muted" id="progD">&nbsp;</div>' +
+      (cancellable ? '<div style="margin-top:12px"><button class="btn ghost sm" id="progX" type="button">' + esc(T('cancel')) + '</button></div>' : '') + '</div></div>';
+    if (cancellable) $('progX').onclick = () => { st.cancelled = true; $('progD').textContent = T('cancelling'); };
+    st.set = (p, d) => { const b = $('progBar'); if (b) b.style.width = Math.round(clamp(p, 0, 1) * 100) + '%'; if (d != null && $('progD')) $('progD').textContent = d; };
+    st.close = () => { $('progRoot').innerHTML = ''; Prog.cur = null; };
+    this.cur = st; return st;
+  }
+};
+
+/* ── modal / sheet with focus trap, Esc, Android back ── */
+let modalStack = [];
+function openModal(o) {
+  const root = $('modalRoot');
+  const wrap = document.createElement('div');
+  wrap.className = 'scrim' + (o.center ? ' center' : '');
+  wrap.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mt' + modalStack.length + '">' +
+    (o.title ? '<h3 id="mt' + modalStack.length + '">' + esc(o.title) + '</h3>' : '') + '<div class="mb">' + (o.html || '') + '</div>' +
+    (o.actions && o.actions.length ? '<div class="acts"></div>' : '') + '</div>';
+  root.appendChild(wrap);
+  const prevFocus = document.activeElement;
+  const m = { el: wrap, body: wrap.querySelector('.mb'), close, onClose: o.onClose };
+  function close() {
+    if (!wrap.parentNode) return;
+    wrap.remove(); modalStack = modalStack.filter(x => x !== m);
+    if (o.onClose) try { o.onClose(); } catch (e) {}
+    if (prevFocus && prevFocus.focus) try { prevFocus.focus(); } catch (e) {}
+  }
+  if (o.actions) {
+    const acts = wrap.querySelector('.acts');
+    o.actions.forEach(a => {
+      const b = document.createElement('button'); b.type = 'button';
+      b.className = 'btn ' + (a.cls || 'ghost'); b.textContent = a.label;
+      b.onclick = async () => { if (a.onClick) { const r = await a.onClick(m); if (r === false) return; } if (!a.keep) close(); };
+      acts.appendChild(b);
+    });
+  }
+  wrap.addEventListener('click', e => { if (e.target === wrap && !o.sticky) close(); });
+  wrap.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !o.sticky) { e.stopPropagation(); close(); }
+    if (e.key === 'Tab') {
+      const f = [...wrap.querySelectorAll('button,input,select,textarea,a[href],[tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && x.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+  modalStack.push(m);
+  setTimeout(() => { const f = wrap.querySelector('input,select,textarea,button'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }, 30);
+  return m;
+}
+function confirmBox(msg, okLabel, danger) {
+  return new Promise(res => {
+    let done = false;
+    openModal({
+      center: true, title: T('areYouSure'), html: '<p>' + esc(msg) + '</p>',
+      onClose: () => { if (!done) res(false); },
+      actions: [
+        { label: T('cancel'), cls: 'ghost', onClick: () => { done = true; res(false); } },
+        { label: okLabel || T('ok'), cls: danger ? 'danger' : 'primary', onClick: () => { done = true; res(true); } }
+      ]
+    });
+  });
+}
+function promptBox(title, val, okLabel) {
+  return new Promise(res => {
+    let done = false;
+    const m = openModal({
+      center: true, title, html: '<input type="text" id="pbIn" maxlength="60" value="' + esc(val || '') + '">',
+      onClose: () => { if (!done) res(null); },
+      actions: [
+        { label: T('cancel'), cls: 'ghost', onClick: () => { done = true; res(null); } },
+        { label: okLabel || T('save'), cls: 'primary', onClick: () => { done = true; res($('pbIn').value.trim()); } }
+      ]
+    });
+    m.body.querySelector('input').addEventListener('keydown', e => { if (e.key === 'Enter') m.el.querySelector('.btn.primary').click(); });
+  });
+}
+
+/* long-press helper (edit gesture) */
+function onLongPress(el, fn) {
+  let t = 0, sx = 0, sy = 0, fired = false;
+  el.addEventListener('pointerdown', e => { fired = false; sx = e.clientX; sy = e.clientY; t = setTimeout(() => { fired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch (er) {} fn(e); }, 550); });
+  el.addEventListener('pointermove', e => { if (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8) clearTimeout(t); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, () => clearTimeout(t)));
+  el.addEventListener('click', e => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); fired = false; } }, true);
+  el.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+/* ── file picking ── */
+function pickFiles(kind) {
+  return new Promise(res => {
+    const inp = $(kind === 'one' ? 'fileOne' : kind === 'dir' ? 'fileDir' : kind === 'json' ? 'fileJson' : 'fileMany');
+    inp.value = '';
+    inp.onchange = () => { const f = [...(inp.files || [])]; inp.value = ''; res(f); };
+    inp.addEventListener('cancel', () => res([]), { once: true });
+    inp.click();
+  });
+}
+const isHeic = f => /\.(heic|heif)$/i.test(f.name || '') || /hei[cf]/i.test(f.type || '');
+const isImageFile = f => /^image\//.test(f.type || '') || /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i.test(f.name || '');
+
+/* multi-CDN script loader */
+const _loaded = {};
+function loadScript(urls, test) {
+  if (test()) return Promise.resolve();
+  const key = urls[0];
+  if (_loaded[key]) return _loaded[key];
+  _loaded[key] = (async () => {
+    for (const u of urls) {
+      try {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script'); s.src = u; s.async = true; s.crossOrigin = 'anonymous';
+          const to = setTimeout(() => rej(new Error('timeout')), 20000);
+          s.onload = () => { clearTimeout(to); res(); }; s.onerror = () => { clearTimeout(to); rej(new Error('load')); };
+          document.head.appendChild(s);
+        });
+        if (test()) return;
+      } catch (e) {}
+    }
+    _loaded[key] = null;
+    throw new Error('cdn');
+  })();
+  return _loaded[key];
+}
+const HEIC_URLS = [
+  'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js',
+  'https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js'
+];
+
+/* decode any image file → ImageBitmap (EXIF orientation respected) */
+async function decodeImage(file) {
+  try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) {}
+  try {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image(); img.src = url; await img.decode();
+      return await createImageBitmap(img);
+    } finally { URL.revokeObjectURL(url); }
+  } catch (e) {}
+  if (isHeic(file)) {
+    await loadScript(HEIC_URLS, () => typeof window.heic2any === 'function');
+    const out = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+    return await createImageBitmap(Array.isArray(out) ? out[0] : out);
+  }
+  throw new Error('decode');
+}
+
+/* download & share */
+function downloadBlob(blob, name) {
+  const a = document.createElement('a'); const u = URL.createObjectURL(blob);
+  a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 8000);
+}
+async function shareBlob(blob, name) {
+  const text = S.name ? T('shareMadeBy', { name: S.name }) : T('shareMade');
+  try {
+    const file = new File([blob], name, { type: blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'CollageNest', text }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  downloadBlob(blob, name); toast(T('shareFallback'));
+}
+function fileStamp() { const d = new Date(); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()); }
+
+/* ── themes ── */
+const THEMES = {
+  gold:    { night: ['#0b0b0c', '#141416', '#1c1b1f', '#2c2820', '#f3efe6', '#a39d8f', '#d4af37', '#f0d278', '#111'], day: ['#faf7ef', '#ffffff', '#f2ecdd', '#e3d8bd', '#1d1a14', '#6b6457', '#9c7a12', '#c19a2b', '#fff'] },
+  sapphire:{ night: ['#090c13', '#11161f', '#18202c', '#24304a', '#eaf0fb', '#94a2bb', '#6ea8ff', '#a9cbff', '#06101f'], day: ['#f4f7fc', '#ffffff', '#e9eff9', '#cfdcf2', '#121a28', '#56647c', '#2a62c9', '#4f86e8', '#fff'] },
+  emerald: { night: ['#08100c', '#0f1813', '#15211a', '#21382b', '#e8f5ee', '#8fae9d', '#3fcf8e', '#86e8b9', '#04140b'], day: ['#f3faf6', '#ffffff', '#e6f4ec', '#c9e6d6', '#10201a', '#557063', '#16804f', '#2ea56c', '#fff'] },
+  ruby:    { night: ['#110a0c', '#1a1013', '#23161a', '#3a2229', '#f7eaee', '#b3959d', '#ff6b81', '#ffa6b4', '#1a0509'], day: ['#fcf4f6', '#ffffff', '#f7e7eb', '#ecccd4', '#26121a', '#76525c', '#bb2b45', '#df4b66', '#fff'] },
+  amethyst:{ night: ['#0d0b13', '#15121d', '#1d1928', '#302a44', '#f0ecfa', '#a39cb8', '#b48cff', '#d4bcff', '#120a22'], day: ['#f7f5fc', '#ffffff', '#efeaf9', '#dcd2f1', '#1a1528', '#625a78', '#6a43c4', '#8a66e0', '#fff'] }
+};
+const VARS = ['--bg', '--bg2', '--bg3', '--line', '--text', '--muted', '--accent', '--accent2', '--onaccent'];
+function applyTheme() {
+  const t = (THEMES[S.theme] || THEMES.gold)[S.mode === 'day' ? 'day' : 'night'];
+  const r = document.documentElement;
+  VARS.forEach((v, i) => r.style.setProperty(v, t[i]));
+  r.setAttribute('data-mode', S.mode === 'day' ? 'day' : 'night');
+  const mt = document.querySelector('meta[name=theme-color]'); if (mt) mt.setAttribute('content', t[0]);
+  const mb = $('modeBtn'); if (mb) { mb.textContent = S.mode === 'day' ? '☀️' : '🌙'; mb.setAttribute('aria-label', T(S.mode === 'day' ? 'toNight' : 'toDay')); }
+}
+function themePicker() {
+  const draw = () => '<div class="themes">' + Object.keys(THEMES).map(k => {
+    const t = THEMES[k][S.mode === 'day' ? 'day' : 'night'];
+    return '<button type="button" data-th="' + k + '" class="' + (S.theme === k ? 'on' : '') + '" aria-label="' + esc(T('th_' + k)) + '"><span style="background:linear-gradient(135deg,' + t[0] + ' 50%,' + t[6] + ' 50%)"></span></button>';
+  }).join('') + '</div><div class="sw" style="margin-top:12px"><span>' + esc(T('dayMode')) + '</span><label class="toggle"><input type="checkbox" id="tpDay" ' + (S.mode === 'day' ? 'checked' : '') + ' aria-label="' + esc(T('dayMode')) + '"><span></span></label></div>';
+  const m = openModal({ title: T('chooseTheme'), html: draw(), actions: [{ label: T('close'), cls: 'primary' }] });
+  const bind = () => {
+    m.body.querySelectorAll('[data-th]').forEach(b => b.onclick = () => { S.theme = b.dataset.th; saveS(); applyTheme(); m.body.innerHTML = draw(); bind(); });
+    $('tpDay').onchange = e => { S.mode = e.target.checked ? 'day' : 'night'; saveS(); applyTheme(); m.body.innerHTML = draw(); bind(); };
+  };
+  bind();
+}
+
+/* ═══ CollageNest — mosaic engine: libraries, features (Lab 3×3), matching worker, rendering ═══ */
+
+/* ── color: sRGB → linear → Lab ── */
+const LIN = new Float32Array(256);
+for (let i = 0; i < 256; i++) { const c = i / 255; LIN[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+function labF(t) { return t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116; }
+function lin2lab(r, g, b, out, o) {
+  const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+  const y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+  const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+  const fx = labF(x), fy = labF(y), fz = labF(z);
+  out[o] = 116 * fy - 16; out[o + 1] = 500 * (fx - fy); out[o + 2] = 200 * (fy - fz);
+}
+function lin2srgb8(v) { v = v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; return Math.round(clamp(v, 0, 1) * 255); }
+
+const G = 3, FD = G * G * 3; // 3×3 sub-blocks × Lab = 27 numbers per tile/cell
+
+/* average blocks of an RGBA buffer (W×H) into G×G Lab features */
+function blockFeatures(data, W, H, out, o, rgbOut, ro) {
+  const bw = W / G, bh = H / G; let tr = 0, tg = 0, tb = 0;
+  for (let by = 0; by < G; by++) for (let bx = 0; bx < G; bx++) {
+    let r = 0, g = 0, b = 0, n = 0;
+    const x0 = Math.floor(bx * bw), x1 = Math.floor((bx + 1) * bw), y0 = Math.floor(by * bh), y1 = Math.floor((by + 1) * bh);
+    for (let y = y0; y < y1; y++) { let p = (y * W + x0) * 4; for (let x = x0; x < x1; x++, p += 4) { r += LIN[data[p]]; g += LIN[data[p + 1]]; b += LIN[data[p + 2]]; n++; } }
+    n = n || 1; r /= n; g /= n; b /= n; tr += r; tg += g; tb += b;
+    lin2lab(r, g, b, out, o + (by * G + bx) * 3);
+  }
+  if (rgbOut) { rgbOut[ro] = lin2srgb8(tr / 9); rgbOut[ro + 1] = lin2srgb8(tg / 9); rgbOut[ro + 2] = lin2srgb8(tb / 9); }
+}
+/* horizontally mirrored feature (for flipped tiles) */
+function mirrorFeat(src, so, dst, d) {
+  for (let by = 0; by < G; by++) for (let bx = 0; bx < G; bx++) {
+    const s = so + (by * G + bx) * 3, t = d + (by * G + (G - 1 - bx)) * 3;
+    dst[t] = src[s]; dst[t + 1] = src[s + 1]; dst[t + 2] = src[s + 2];
+  }
+}
+/* crop rect of an image (bw×bh) to aspect a (=w/h), centered */
+function cropToAspect(bw, bh, a) {
+  if (bw / bh > a) { const sw = bh * a; return [(bw - sw) / 2, 0, sw, bh]; }
+  const sh = bw / a; return [0, (bh - sh) / 2, bw, sh];
+}
+const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4 };
+
+/* ── tile records (Blob ≤256px + mini ≤64px) ── */
+async function scaledBlob(src, sw, sh, maxSide, q) {
+  const s = Math.min(1, maxSide / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * s)), h = Math.max(1, Math.round(sh * s));
+  const c = mkCanvas(w, h), x = c.getContext('2d');
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  x.drawImage(src, 0, 0, w, h);
+  return { c, w, h, blob: await canvasToBlob(c, 'image/jpeg', q) };
+}
+async function makeTileRecord(bmp, libId, sig) {
+  let src = bmp, w = bmp.width, h = bmp.height;
+  if (Math.max(w, h) > 1400) { const s = 1024 / Math.max(w, h); const c = mkCanvas(Math.round(w * s), Math.round(h * s)); const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(bmp, 0, 0, c.width, c.height); src = c; w = c.width; h = c.height; }
+  const big = await scaledBlob(src, w, h, 256, 0.86);
+  const mini = await scaledBlob(big.c, big.w, big.h, 64, 0.8);
+  return { id: uid(), libId, sig, w: big.w, h: big.h, blob: big.blob, mini: mini.blob, created: Date.now() };
+}
+
+async function newLibrary(name) {
+  const lib = { id: uid(), name: name || T('libDefaultName', { d: df(Date.now()) }), created: Date.now(), updated: Date.now(), count: 0 };
+  await DB.put('libs', lib); return lib;
+}
+async function refreshLibCount(libId) {
+  const lib = await DB.get('libs', libId); if (!lib) return;
+  lib.count = await DB.countLib(libId); lib.updated = Date.now(); await DB.put('libs', lib);
+  LibCache.drop(libId);
+  return lib;
+}
+
+/* import files into a library — 3 at a time, batched writes, cancellable */
+async function importToLib(libId, files) {
+  files = files.filter(isImageFile);
+  if (!files.length) { toast(T('noImages'), true); return 0; }
+  const existing = await DB.byLib(libId);
+  const sigs = new Set(existing.map(t => t.sig));
+  const p = Prog.show(T('importing'), true);
+  let done = 0, added = 0, failed = 0, dup = 0, heicFail = 0, quota = false, i = 0;
+  const batch = [];
+  const flush = async () => {
+    if (!batch.length) return;
+    const b = batch.splice(0);
+    try { await DB.putMany('tiles', b); added += b.length; }
+    catch (e) { quota = true; p.cancelled = true; logErr('putMany: ' + (e && e.name)); }
+  };
+  const work = async f => {
+    const sig = (f.name || '') + '|' + f.size + '|' + (f.lastModified || 0);
+    if (sigs.has(sig)) { dup++; return; }
+    sigs.add(sig);
+    let bmp;
+    try { bmp = await decodeImage(f); } catch (e) { failed++; if (isHeic(f)) heicFail++; return; }
+    try { batch.push(await makeTileRecord(bmp, libId, sig)); } catch (e) { failed++; }
+    finally { try { bmp.close(); } catch (e) {} }
+  };
+  const runner = async () => {
+    while (i < files.length && !p.cancelled) {
+      const f = files[i++];
+      await work(f); done++;
+      p.set(done / files.length, T('importedN', { n: nf(done), t: nf(files.length) }));
+      if (batch.length >= 20) await flush();
+    }
+  };
+  await Promise.all([runner(), runner(), runner()]);
+  await flush();
+  await refreshLibCount(libId);
+  p.close();
+  if (quota) toast(T('storageFull'), true);
+  else if (heicFail) toast(T('heicFail', { n: heicFail }), true);
+  else toast(T('importDone', { n: nf(added) }) + (dup ? ' · ' + T('dupSkipped', { n: nf(dup) }) : '') + (failed ? ' · ' + T('failedN', { n: nf(failed) }) : ''), !!failed && !added);
+  return added;
+}
+
+/* ── demo content (procedural) — lets anyone try without photos ── */
+function hsl(h, s, l) { return 'hsl(' + h + ',' + s + '%,' + l + '%)'; }
+async function makeDemoLibrary() {
+  const lib = await newLibrary(T('demoLib'));
+  lib.demo = true; await DB.put('libs', lib);
+  const p = Prog.show(T('makingDemo'), false);
+  const specs = [];
+  for (let hue = 0; hue < 360; hue += 24) for (const l of [18, 32, 46, 60, 74, 88]) specs.push([hue, 55 + (hue % 3) * 15, l]);
+  for (const l of [6, 15, 25, 38, 52, 66, 80, 94]) specs.push([0, 0, l], [30, 12, l]);
+  const recs = []; let rnd = 12345;
+  const R = () => { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647; };
+  for (let k = 0; k < specs.length; k++) {
+    const [h, s, l] = specs[k];
+    const c = mkCanvas(256, 192), x = c.getContext('2d');
+    const gr = x.createLinearGradient(0, 0, 256 * R(), 192);
+    gr.addColorStop(0, hsl(h, s, clamp(l + 10, 0, 100))); gr.addColorStop(1, hsl((h + 20) % 360, s, clamp(l - 10, 0, 100)));
+    x.fillStyle = gr; x.fillRect(0, 0, 256, 192);
+    const shapes = 3 + Math.floor(R() * 4);
+    for (let j = 0; j < shapes; j++) {
+      x.globalAlpha = 0.35 + R() * 0.3;
+      x.fillStyle = hsl((h + (R() * 60 - 30) + 360) % 360, s, clamp(l + (R() * 30 - 15), 0, 100));
+      const t = R();
+      if (t < 0.5) { x.beginPath(); x.arc(R() * 256, R() * 192, 12 + R() * 50, 0, Math.PI * 2); x.fill(); }
+      else if (t < 0.8) { x.fillRect(R() * 256, R() * 192, 20 + R() * 90, 10 + R() * 50); }
+      else { x.beginPath(); x.moveTo(R() * 256, 192); x.lineTo(R() * 256, R() * 120); x.lineTo(R() * 256, 192); x.fill(); }
+    }
+    x.globalAlpha = 1;
+    const blob = await canvasToBlob(c, 'image/jpeg', 0.85);
+    const mini = await scaledBlob(c, 256, 192, 64, 0.8);
+    recs.push({ id: uid(), libId: lib.id, sig: 'demo' + k, w: 256, h: 192, blob, mini: mini.blob, created: Date.now() });
+    if (k % 20 === 0) { p.set(k / specs.length); await yieldUI(); }
+  }
+  await DB.putMany('tiles', recs);
+  await refreshLibCount(lib.id);
+  p.close();
+  return lib;
+}
+async function makeDemoMain() {
+  const W = 1200, H = 1500, c = mkCanvas(W, H), x = c.getContext('2d');
+  const sky = x.createLinearGradient(0, 0, 0, H * 0.62);
+  sky.addColorStop(0, '#1b1446'); sky.addColorStop(0.45, '#c2407a'); sky.addColorStop(0.8, '#ff9a3c'); sky.addColorStop(1, '#ffd36b');
+  x.fillStyle = sky; x.fillRect(0, 0, W, H * 0.62);
+  x.fillStyle = '#fff3c4'; x.beginPath(); x.arc(W * 0.5, H * 0.56, 170, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#3a1e4f';
+  x.beginPath(); x.moveTo(0, H * 0.62); x.lineTo(W * 0.18, H * 0.44); x.lineTo(W * 0.34, H * 0.56); x.lineTo(W * 0.52, H * 0.48); x.lineTo(W * 0.7, H * 0.58); x.lineTo(W * 0.86, H * 0.42); x.lineTo(W, H * 0.52); x.lineTo(W, H * 0.62); x.fill();
+  const sea = x.createLinearGradient(0, H * 0.62, 0, H);
+  sea.addColorStop(0, '#ff8a4c'); sea.addColorStop(0.25, '#7b3d7a'); sea.addColorStop(1, '#0d2a4f');
+  x.fillStyle = sea; x.fillRect(0, H * 0.62, W, H);
+  x.fillStyle = 'rgba(255,230,160,.55)';
+  for (let i = 0; i < 14; i++) { const y = H * 0.64 + i * 26, w = 300 - i * 18; x.fillRect(W / 2 - w / 2, y, w, 7); }
+  x.fillStyle = '#120c1c';
+  x.beginPath(); x.moveTo(W * 0.12, H); x.quadraticCurveTo(W * 0.16, H * 0.8, W * 0.2, H * 0.68); x.lineTo(W * 0.215, H * 0.69); x.quadraticCurveTo(W * 0.19, H * 0.82, W * 0.17, H); x.fill();
+  for (const [dx, dy] of [[-150, 30], [-120, -40], [120, -30], [150, 40], [0, -80]]) {
+    x.beginPath(); x.moveTo(W * 0.205, H * 0.68); x.quadraticCurveTo(W * 0.205 + dx * 0.6, H * 0.68 + dy - 50, W * 0.205 + dx, H * 0.68 + dy + 40); x.quadraticCurveTo(W * 0.205 + dx * 0.5, H * 0.68 + dy - 20, W * 0.205, H * 0.68); x.fill();
+  }
+  const bmp = await createImageBitmap(c);
+  return bmp;
+}
+
+/* ── library cache (decoded minis per library) ── */
+const LibCache = {
+  id: null, tiles: null, minis: null,
+  drop(id) { if (!id || this.id === id) { if (this.minis) this.minis.forEach(b => { try { b.close(); } catch (e) {} }); this.id = null; this.tiles = null; this.minis = null; } },
+  async load(libId, p) {
+    if (this.id === libId && this.tiles) return this;
+    this.drop();
+    const tiles = await DB.byLib(libId);
+    const minis = new Array(tiles.length);
+    let i = 0, done = 0;
+    const run = async () => {
+      while (i < tiles.length) {
+        const k = i++;
+        try { minis[k] = await createImageBitmap(tiles[k].mini); } catch (e) { minis[k] = null; }
+        done++; if (p && done % 25 === 0) p.set(done / tiles.length * 0.25, T('loadingTiles', { n: nf(done), t: nf(tiles.length) }));
+      }
+    };
+    await Promise.all([run(), run(), run(), run()]);
+    const keep = []; const km = [];
+    tiles.forEach((t, k) => { if (minis[k]) { keep.push(t); km.push(minis[k]); } });
+    this.id = libId; this.tiles = keep; this.minis = km;
+    return this;
+  }
+};
+
+/* tile features for a given cell aspect (+ mirrored copies) */
+async function tileFeatures(minis, a, allowFlip) {
+  const N = minis.length, M = allowFlip ? N * 2 : N;
+  const feats = new Float32Array(M * FD), tileOf = new Int32Array(M), flipOf = new Uint8Array(M);
+  const c = mkCanvas(24, 24), x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  for (let i = 0; i < N; i++) {
+    const b = minis[i], [sx, sy, sw, sh] = cropToAspect(b.width, b.height, a);
+    x.clearRect(0, 0, 24, 24); x.drawImage(b, sx, sy, sw, sh, 0, 0, 24, 24);
+    blockFeatures(x.getImageData(0, 0, 24, 24).data, 24, 24, feats, i * FD);
+    tileOf[i] = i;
+    if (allowFlip) { mirrorFeat(feats, i * FD, feats, (N + i) * FD); tileOf[N + i] = i; flipOf[N + i] = 1; }
+    if (i % 200 === 199) await yieldUI();
+  }
+  return { feats, tileOf, flipOf, N, M };
+}
+
+/* grid geometry + target features */
+function gridFor(mainW, mainH, cols, a) {
+  const cellW = mainW / cols, cellH = cellW / a;
+  const rows = Math.max(1, Math.round(mainH / cellH));
+  const gar = cols * a / rows;
+  let sw, sh; if (mainW / mainH > gar) { sh = mainH; sw = mainH * gar; } else { sw = mainW; sh = mainW / gar; }
+  return { cols, rows, a, src: { x: (mainW - sw) / 2, y: (mainH - sh) / 2, w: sw, h: sh } };
+}
+function targetFeatures(main, g) {
+  const SS = 4, W = g.cols * G * SS, H = g.rows * G * SS;
+  const c = mkCanvas(W, H), x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  x.drawImage(main, g.src.x, g.src.y, g.src.w, g.src.h, 0, 0, W, H);
+  const data = x.getImageData(0, 0, W, H).data;
+  const C = g.cols * g.rows, feats = new Float32Array(C * FD), rgb = new Uint8Array(C * 3);
+  const cw = G * SS, ch = G * SS, buf = new Uint8ClampedArray(cw * ch * 4);
+  for (let cy = 0; cy < g.rows; cy++) for (let cx = 0; cx < g.cols; cx++) {
+    for (let y = 0; y < ch; y++) { const s = ((cy * ch + y) * W + cx * cw) * 4; buf.set(data.subarray(s, s + cw * 4), y * cw * 4); }
+    const ci = cy * g.cols + cx;
+    blockFeatures(buf, cw, ch, feats, ci * FD, rgb, ci * 3);
+  }
+  return { feats, rgb };
+}
+
+/* ── matcher (runs in a Worker; same function is the main-thread fallback) ── */
+function matchCore(d, onProg) {
+  const { tf, tileOf, N, cf, C, cols, maxRep, R, seed } = d;
+  const D = 27, M = tileOf.length, K = Math.min(M, 40);
+  let s = seed >>> 0 || 1; const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  const order = new Int32Array(C); for (let i = 0; i < C; i++) order[i] = i;
+  for (let i = C - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
+  const uses = new Int32Array(N), pos = new Array(N); for (let i = 0; i < N; i++) pos[i] = [];
+  const assign = new Int32Array(C).fill(-1), topI = new Int32Array(K), topD = new Float64Array(K);
+  const near = (t, cx, cy) => { const p = pos[t]; for (let k = 0; k < p.length; k++) { const q = p[k], qx = q % cols, qy = (q / cols) | 0; if (Math.abs(qx - cx) <= R && Math.abs(qy - cy) <= R) return true; } return false; };
+  const dist = (base, e, lim) => {
+    let dd = 0; const o = e * D;
+    for (let k = 0; k < D; k += 9) {
+      for (let j = 0; j < 9; j++) { const t = cf[base + k + j] - tf[o + k + j]; dd += t * t; }
+      if (dd >= lim) return dd;
+    }
+    return dd;
+  };
+  for (let ci = 0; ci < C; ci++) {
+    const c = order[ci], base = c * D, cx = c % cols, cy = (c / cols) | 0;
+    let cnt = 0;
+    for (let e = 0; e < M; e++) {
+      const lim = cnt === K ? topD[K - 1] : Infinity;
+      const dd = dist(base, e, lim);
+      if (dd >= lim) continue;
+      let j = cnt < K ? cnt++ : K - 1;
+      while (j > 0 && topD[j - 1] > dd) { topD[j] = topD[j - 1]; topI[j] = topI[j - 1]; j--; }
+      topD[j] = dd; topI[j] = e;
+    }
+    let ch = -1;
+    for (let j = 0; j < cnt; j++) { const t = tileOf[topI[j]]; if (uses[t] >= maxRep) continue; if (R > 0 && near(t, cx, cy)) continue; ch = topI[j]; break; }
+    if (ch < 0) { // relax step by step: full scan with all rules → without distance rule → best overall
+      for (let pass = 0; pass < 2 && ch < 0; pass++) {
+        let best = Infinity;
+        for (let e = 0; e < M; e++) {
+          const t = tileOf[e]; if (uses[t] >= maxRep) continue; if (pass === 0 && R > 0 && near(t, cx, cy)) continue;
+          const dd = dist(base, e, best); if (dd < best) { best = dd; ch = e; }
+        }
+      }
+      if (ch < 0) ch = topI[0];
+    }
+    assign[c] = ch; const t = tileOf[ch]; uses[t]++; pos[t].push(c);
+    if (onProg && (ci & 511) === 0) onProg(ci / C);
+  }
+  return assign;
+}
+const WORKER_SRC = matchCore.toString() + '\nonmessage=function(e){var a=matchCore(e.data,function(p){postMessage({t:"p",p:p})});postMessage({t:"d",a:a},[a.buffer]);};';
+let _workerURL = null;
+function runMatch(data, p) {
+  return new Promise((res, rej) => {
+    let w = null;
+    try { if (!_workerURL) _workerURL = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })); w = new Worker(_workerURL); } catch (e) { w = null; }
+    if (!w) { // fallback: same code on main thread
+      setTimeout(() => { try { res(matchCore(data, null)); } catch (e) { rej(e); } }, 30);
+      return;
+    }
+    const iv = setInterval(() => { if (p.cancelled) { clearInterval(iv); w.terminate(); rej(new Error('cancel')); } }, 150);
+    w.onmessage = e => {
+      if (e.data.t === 'p') p.set(0.35 + e.data.p * 0.55, T('matching', { p: Math.round(e.data.p * 100) }));
+      else { clearInterval(iv); w.terminate(); res(e.data.a); }
+    };
+    w.onerror = e => { clearInterval(iv); w.terminate(); logErr('worker: ' + (e.message || '')); try { res(matchCore(data, null)); } catch (er) { rej(er); } };
+    w.postMessage(data);
+  });
+}
+
+/* ── rendering (same function for preview, zoomed view and export = WYSIWYG) ── */
+function drawCell(x, m, i, px, py, w, h, bmp, st) {
+  const e = m.assign[i]; if (e < 0 || !bmp) return;
+  const g = st.grout > 0 ? Math.max(0.5, st.grout * Math.min(w, h) / 60) : 0;
+  const X = px + g / 2, Y = py + g / 2, W = w - g, H = h - g;
+  const [sx, sy, sw, sh] = cropToAspect(bmp.width, bmp.height, m.a);
+  x.save();
+  if (st.shape !== 'square') {
+    x.beginPath();
+    if (st.shape === 'circle') x.ellipse(X + W / 2, Y + H / 2, W / 2, H / 2, 0, 0, Math.PI * 2);
+    else if (x.roundRect) x.roundRect(X, Y, W, H, Math.min(W, H) * 0.2);
+    else x.rect(X, Y, W, H);
+    x.clip();
+  }
+  if (m.flipOf[e]) { x.save(); x.translate(X + W, Y); x.scale(-1, 1); x.drawImage(bmp, sx, sy, sw, sh, 0, 0, W, H); x.restore(); }
+  else x.drawImage(bmp, sx, sy, sw, sh, X, Y, W, H);
+  if (st.tint > 0) { const r = m.rgb; x.globalAlpha = st.tint / 100; x.fillStyle = 'rgb(' + r[i * 3] + ',' + r[i * 3 + 1] + ',' + r[i * 3 + 2] + ')'; x.fillRect(X, Y, W, H); }
+  if (st.overlay > 0 && m.main) {
+    const cx = i % m.cols, cy = (i / m.cols) | 0, s = m.src, uw = s.w / m.cols, uh = s.h / m.rows;
+    const gx = g / 2 / w * uw, gy = g / 2 / h * uh;
+    x.globalAlpha = st.overlay / 100;
+    x.drawImage(m.main, s.x + cx * uw + gx, s.y + cy * uh + gy, uw - 2 * gx, uh - 2 * gy, X, Y, W, H);
+  }
+  x.restore();
+}
+function paintBackground(x, W, H, st) {
+  x.fillStyle = st.grout > 0 ? st.groutColor : (st.shape === 'square' ? '#000' : st.groutColor);
+  x.fillRect(0, 0, W, H);
+}
+/* build preview composite from minis */
+function buildComposite(m, st) {
+  const P = clamp(Math.floor(2400 / Math.max(m.cols * m.a, m.rows)), 8, 48);
+  const cw = Math.max(2, Math.round(P * m.a)), ch = P;
+  const c = document.createElement('canvas'); c.width = cw * m.cols; c.height = ch * m.rows;
+  const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  paintBackground(x, c.width, c.height, st);
+  for (let i = 0; i < m.assign.length; i++) {
+    const cx = i % m.cols, cy = (i / m.cols) | 0;
+    drawCell(x, m, i, cx * cw, cy * ch, cw, ch, m.minis[m.tileOf[m.assign[i]]], st);
+  }
+  m.comp = c; m.cw = cw; m.ch = ch;
+  return c;
+}
+function updateCompositeCell(m, i, st) {
+  const x = m.comp.getContext('2d'), cx = i % m.cols, cy = (i / m.cols) | 0;
+  x.save(); x.beginPath(); x.rect(cx * m.cw, cy * m.ch, m.cw, m.ch); x.clip();
+  paintBackground(x, m.comp.width, m.comp.height, st); x.restore();
+  drawCell(x, m, i, cx * m.cw, cy * m.ch, m.cw, m.ch, m.minis[m.tileOf[m.assign[i]]], st);
+}
+/* export size for a long side (integer cells → no seams) */
+function exportDims(m, long) {
+  const unit = long / Math.max(m.cols * m.a, m.rows);
+  let ch = Math.max(2, Math.round(unit)), cw = Math.max(2, Math.round(unit * m.a));
+  const maxArea = isCoarse() ? 24e6 : 64e6;
+  while (cw * m.cols * ch * m.rows > maxArea && ch > 2) { ch--; cw = Math.max(2, Math.round(ch * m.a)); }
+  return { cw, ch, W: cw * m.cols, H: ch * m.rows };
+}
+/* full-quality export: decode each 256px tile once, draw all of its cells, release */
+async function renderExport(m, st, long, p, sign) {
+  const d = exportDims(m, long);
+  const c = document.createElement('canvas'); c.width = d.W; c.height = d.H;
+  const x = c.getContext('2d'); if (!x) throw new Error('canvas');
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  paintBackground(x, d.W, d.H, st);
+  const byTile = new Map();
+  for (let i = 0; i < m.assign.length; i++) { const t = m.tileOf[m.assign[i]]; if (!byTile.has(t)) byTile.set(t, []); byTile.get(t).push(i); }
+  let k = 0; const n = byTile.size;
+  for (const [t, cells] of byTile) {
+    if (p && p.cancelled) throw new Error('cancel');
+    let b = null;
+    try { b = await createImageBitmap(m.tiles[t].blob); } catch (e) { b = m.minis[t]; }
+    for (const i of cells) drawCell(x, m, i, (i % m.cols) * d.cw, ((i / m.cols) | 0) * d.ch, d.cw, d.ch, b, st);
+    if (b !== m.minis[t]) try { b.close(); } catch (e) {}
+    k++; if (p && k % 20 === 0) { p.set(k / n * 0.9, T('renderingN', { n: nf(k), t: nf(n) })); await yieldUI(); }
+  }
+  if (sign && S.name) drawSignature(x, d.W, d.H);
+  return { c, W: d.W, H: d.H };
+}
+function drawSignature(x, W, H) {
+  const fs = Math.max(14, Math.round(Math.min(W, H) * 0.022));
+  x.save(); x.font = '600 ' + fs + 'px ' + getComputedStyle(document.body).fontFamily;
+  const txt = S.name + ' · CollageNest';
+  const tw = x.measureText(txt).width, pad = fs * 0.5;
+  x.globalAlpha = 0.55; x.fillStyle = '#000';
+  x.fillRect(W - tw - pad * 3, H - fs - pad * 3, tw + pad * 2, fs + pad * 1.6);
+  x.globalAlpha = 0.95; x.fillStyle = '#fff'; x.textBaseline = 'top';
+  x.fillText(txt, W - tw - pad * 2, H - fs - pad * 2.2);
+  x.restore();
+}
+async function encodeCanvas(c, fmt) {
+  const type = fmt === 'png' ? 'image/png' : 'image/jpeg';
+  return await canvasToBlob(c, type, 0.92);
+}
+async function thumbOf(src, sw, sh) { return (await scaledBlob(src, sw, sh, 360, 0.82)).blob; }
+
+/* ═══ CollageNest — mosaic screens: setup wizard + zoomable editor (tap a tile to swap) ═══ */
+
+const Setup = { main: null, mainName: '', thumb: null };
+let MS = null; // current mosaic session
+
+function varietyParams(v, C, N) {
+  if (v === 'low') return { maxRep: C, R: 0 };
+  if (v === 'high') return { maxRep: Math.max(1, Math.ceil(C / N * 1.1)), R: 4 };
+  return { maxRep: Math.max(1, Math.ceil(C / N * 2)), R: 2 };
+}
+async function setMain(bmp, name) {
+  if (Setup.main) try { Setup.main.close(); } catch (e) {}
+  const max = 3000;
+  if (Math.max(bmp.width, bmp.height) > max) {
+    const s = max / Math.max(bmp.width, bmp.height), c = mkCanvas(Math.round(bmp.width * s), Math.round(bmp.height * s));
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(bmp, 0, 0, c.width, c.height);
+    try { bmp.close(); } catch (e) {}
+    bmp = await createImageBitmap(c);
+  }
+  Setup.main = bmp; Setup.mainName = name || '';
+}
+function drawThumbInto(canvas, bmp) {
+  const s = 144; canvas.width = s; canvas.height = s;
+  const x = canvas.getContext('2d'); const [sx, sy, sw, sh] = cropToAspect(bmp.width, bmp.height, 1);
+  x.drawImage(bmp, sx, sy, sw, sh, 0, 0, s, s);
+}
+
+async function libCoverHTML(lib, n) {
+  const tiles = (await DB.byLib(lib.id)).slice(0, n || 4);
+  return tiles.map(t => '<img alt="" src="' + trackURL(URL.createObjectURL(t.mini)) + '">').join('') + '<span></span>'.repeat(Math.max(0, (n || 4) - tiles.length));
+}
+/* object-URL bookkeeping: revoked on every screen change */
+let _urls = [];
+function trackURL(u) { _urls.push(u); return u; }
+function revokeURLs() { _urls.forEach(u => URL.revokeObjectURL(u)); _urls = []; }
+
+async function renderMosaicSetup() {
+  const libs = (await DB.all('libs')).sort((a, b) => b.updated - a.updated);
+  if (!libs.find(l => l.id === S.mosaic.lib)) S.mosaic.lib = libs[0] ? libs[0].id : null;
+  const lib = libs.find(l => l.id === S.mosaic.lib);
+  const m = S.mosaic;
+  let html = '';
+  if (MS) html += '<button class="btn primary big" id="resumeEd" type="button" style="margin-bottom:14px">✏️ ' + esc(T('resumeMosaic')) + '</button>';
+  html += '<div class="card"><h3><span class="num">1</span>' + esc(T('mainPhoto')) + '</h3>' +
+    '<button class="pickbox" id="pickMain" type="button">' + (Setup.main ? '<canvas id="mainThumb"></canvas>' : '<span class="em">🖼️</span>') +
+    '<span><b>' + esc(Setup.main ? (Setup.mainName || T('mainChosen')) : T('pickMain')) + '</b><br><small class="muted">' + esc(Setup.main ? T('tapToChange') + ' · ' + nf(Setup.main.width) + '×' + nf(Setup.main.height) : T('pickMainHint')) + '</small></span></button>' +
+    '<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="demoMain" type="button">✨ ' + esc(T('useSample')) + '</button></div></div>';
+
+  html += '<div class="card"><h3><span class="num">2</span>' + esc(T('tileLib')) + '</h3>';
+  if (libs.length) {
+    html += '<div class="libs" id="libPick">';
+    for (const l of libs) html += '<button class="lib' + (l.id === S.mosaic.lib ? ' sel' : '') + '" type="button" data-lib="' + l.id + '" aria-pressed="' + (l.id === S.mosaic.lib) + '"><div class="cov">' + await libCoverHTML(l) + '</div><div class="meta"><b>' + esc(l.name) + '</b><small>' + esc(T('nPhotos', { n: nf(l.count) })) + '</small></div></button>';
+    html += '</div>';
+  } else html += '<p class="muted">' + esc(T('noLibsYet')) + '</p>';
+  html += '<div class="row" style="margin-top:12px"><button class="btn sm" id="addPhotos" type="button">➕ ' + esc(lib ? T('addToThisLib') : T('newLibPhotos')) + '</button>' +
+    (lib ? '<button class="btn ghost sm" id="newLib" type="button">📚 ' + esc(T('newLib')) + '</button>' : '') +
+    (!isCoarse() ? '<button class="btn ghost sm" id="addDir" type="button">📁 ' + esc(T('addFolder')) + '</button>' : '') +
+    (!libs.some(l => l.demo) ? '<button class="btn ghost sm" id="demoLib" type="button">🎨 ' + esc(T('demoTiles')) + '</button>' : '') + '</div>';
+  if (lib && lib.count < 60) html += '<div class="note">' + esc(T('fewTiles', { n: nf(lib.count) })) + '</div>';
+  html += '</div>';
+
+  const g = Setup.main ? gridFor(Setup.main.width, Setup.main.height, m.cols, ASPECTS[m.aspect]) : null;
+  html += '<div class="card"><h3><span class="num">3</span>' + esc(T('mosaicSettings')) + '</h3>' +
+    '<label class="f" for="colsR">' + esc(T('tilesAcross')) + ': <span class="val" id="colsV">' + nf(m.cols) + '</span></label>' +
+    '<input type="range" id="colsR" min="15" max="150" step="1" value="' + m.cols + '">' +
+    '<div class="small muted" id="gridInfo">' + (g ? esc(T('gridInfo', { c: nf(g.cols), r: nf(g.rows), n: nf(g.cols * g.rows) })) : esc(T('gridNeedsMain'))) + '</div>' +
+    '<label class="f">' + esc(T('tileShape')) + '</label><div class="seg" data-k="aspect">' +
+    ['1:1', '4:3', '3:4'].map(a => '<button type="button" data-v="' + a + '" class="' + (m.aspect === a ? 'on' : '') + '">' + esc(T('asp_' + a.replace(':', '_'))) + '</button>').join('') + '</div>' +
+    '<label class="f">' + esc(T('variety')) + '</label><div class="seg" data-k="variety">' +
+    ['low', 'med', 'high'].map(v => '<button type="button" data-v="' + v + '" class="' + (m.variety === v ? 'on' : '') + '">' + esc(T('var_' + v)) + '</button>').join('') + '</div>' +
+    '<div class="small muted" style="margin-top:6px">' + esc(T('varietyHint')) + '</div>' +
+    '<div class="sw" style="margin-top:8px"><span>' + esc(T('allowFlip')) + '<br><small class="muted">' + esc(T('allowFlipHint')) + '</small></span><label class="toggle"><input type="checkbox" id="flipT" ' + (m.flip ? 'checked' : '') + ' aria-label="' + esc(T('allowFlip')) + '"><span></span></label></div></div>' +
+    '<button class="btn primary big" id="makeMosaic" type="button">✨ ' + esc(T('makeMosaic')) + '</button>';
+  $('main').innerHTML = '<div class="screen">' + html + '</div>';
+
+  if (Setup.main && $('mainThumb')) drawThumbInto($('mainThumb'), Setup.main);
+  if ($('resumeEd')) $('resumeEd').onclick = () => go('editor');
+  $('pickMain').onclick = async () => {
+    const f = (await pickFiles('one'))[0]; if (!f) return;
+    const p = Prog.show(T('loadingPhoto'), false);
+    try { await setMain(await decodeImage(f), f.name.replace(/\.[^.]+$/, '')); } catch (e) { p.close(); toast(isHeic(f) ? T('heicFail', { n: 1 }) : T('decodeFail'), true); return; }
+    p.close(); renderMosaicSetup();
+  };
+  $('demoMain').onclick = async () => { await setMain(await makeDemoMain(), T('sampleName')); renderMosaicSetup(); };
+  document.querySelectorAll('#libPick [data-lib]').forEach(b => {
+    b.onclick = () => { S.mosaic.lib = b.dataset.lib; saveS(); renderMosaicSetup(); };
+    onLongPress(b, () => editLibDialog(b.dataset.lib, renderMosaicSetup));
+  });
+  const addTo = async kind => {
+    const files = await pickFiles(kind); if (!files.length) return;
+    let id = S.mosaic.lib;
+    if (!id) { const l = await newLibrary(); id = l.id; S.mosaic.lib = id; saveS(); }
+    await importToLib(id, files); renderMosaicSetup();
+  };
+  $('addPhotos').onclick = () => addTo('many');
+  if ($('addDir')) $('addDir').onclick = () => addTo('dir');
+  if ($('newLib')) $('newLib').onclick = async () => {
+    const name = await promptBox(T('newLib'), T('libDefaultName', { d: df(Date.now()) }), T('create'));
+    if (name == null) return;
+    const l = await newLibrary(name); S.mosaic.lib = l.id; saveS();
+    const files = await pickFiles('many'); if (files.length) await importToLib(l.id, files);
+    renderMosaicSetup();
+  };
+  if ($('demoLib')) $('demoLib').onclick = async () => { const l = await makeDemoLibrary(); S.mosaic.lib = l.id; saveS(); toast(T('demoReady')); renderMosaicSetup(); };
+  $('colsR').oninput = e => {
+    m.cols = +e.target.value; $('colsV').textContent = nf(m.cols);
+    if (Setup.main) { const g2 = gridFor(Setup.main.width, Setup.main.height, m.cols, ASPECTS[m.aspect]); $('gridInfo').textContent = T('gridInfo', { c: nf(g2.cols), r: nf(g2.rows), n: nf(g2.cols * g2.rows) }); }
+  };
+  $('colsR').onchange = () => saveS();
+  document.querySelectorAll('.seg[data-k]').forEach(sg => sg.querySelectorAll('button').forEach(b => b.onclick = () => { m[sg.dataset.k] = b.dataset.v; saveS(); renderMosaicSetup(); }));
+  $('flipT').onchange = e => { m.flip = e.target.checked; saveS(); };
+  $('makeMosaic').onclick = () => createMosaic(false);
+}
+
+async function createMosaic(reseed) {
+  reseed = reseed === true && !!MS;
+  const m = S.mosaic;
+  if (!reseed) {
+    if (!Setup.main) { toast(T('needMain'), true); return; }
+    const lib = m.lib && await DB.get('libs', m.lib);
+    if (!lib || !lib.count) { toast(T('needLib'), true); return; }
+  }
+  const p = Prog.show(T('creating'), true);
+  try {
+    let ms;
+    if (reseed && MS) { ms = MS; }
+    else {
+      const cache = await LibCache.load(m.lib, p);
+      if (!cache.tiles.length) throw new Error('empty');
+      const a = ASPECTS[m.aspect];
+      p.set(0.27, T('analyzing'));
+      const tf = await tileFeatures(cache.minis, a, m.flip);
+      if (p.cancelled) throw new Error('cancel');
+      const g = gridFor(Setup.main.width, Setup.main.height, m.cols, a);
+      p.set(0.33, T('analyzing')); await yieldUI();
+      const tg = targetFeatures(Setup.main, g);
+      ms = { main: Setup.main, name: Setup.mainName, libId: m.lib, tiles: cache.tiles, minis: cache.minis, cols: g.cols, rows: g.rows, a, src: g.src,
+        tf: tf.feats, tileOf: tf.tileOf, flipOf: tf.flipOf, N: tf.N, cf: tg.feats, rgb: tg.rgb, variety: m.variety };
+    }
+    const C = ms.cols * ms.rows, vp = varietyParams(ms.variety, C, ms.N);
+    const assign = await runMatch({ tf: ms.tf, tileOf: ms.tileOf, N: ms.N, cf: ms.cf, C, cols: ms.cols, maxRep: vp.maxRep, R: vp.R, seed: (Math.random() * 4e9) >>> 0 }, p);
+    if (p.cancelled) throw new Error('cancel');
+    ms.assign = assign; ms.undo = []; ms.redo = []; ms.saved = false;
+    p.set(0.94, T('drawing')); await yieldUI();
+    buildComposite(ms, m);
+    MS = ms;
+    p.close();
+    if (reseed) { Ed.redraw(); Ed.syncUndo(); toast(T('reshuffled')); }
+    else go('editor');
+  } catch (e) {
+    p.close();
+    if (e && e.message === 'cancel') toast(T('cancelled'));
+    else { logErr('createMosaic: ' + (e && e.message)); toast(T('mosaicFail'), true); }
+  }
+}
+
+/* ── editor ── */
+const Ed = {
+  cv: null, x: null, dpr: 1, s: 1, tx: 0, ty: 0, sel: -1, hi: new Map(), loading: new Set(), raf: 0, ro: null,
+  open() {
+    const ed = $('editor');
+    ed.innerHTML = '<header class="top"><button class="homebtn" id="edBack" type="button">' + (isRTL() ? '→ ' : '← ') + esc(T('back')) + '</button>' +
+      '<h1>' + esc(T('mosaic')) + '</h1><button class="icobtn" id="edUndo" type="button" aria-label="' + esc(T('undo')) + '">↶</button><button class="icobtn" id="edRedo" type="button" aria-label="' + esc(T('redo')) + '">↷</button></header>' +
+      '<div class="stage" id="stage"><canvas id="edCv" aria-label="' + esc(T('mosaicCanvas')) + '"></canvas><div class="hint" id="edHint"></div>' +
+      '<div class="zoomctl"><button class="icobtn" id="zIn" type="button" aria-label="' + esc(T('zoomIn')) + '">＋</button><button class="icobtn" id="zOut" type="button" aria-label="' + esc(T('zoomOut')) + '">－</button><button class="icobtn" id="zFit" type="button" aria-label="' + esc(T('zoomFit')) + '">⤢</button></div></div>' +
+      '<div class="dock"><div class="panel hidden" id="stylePanel"></div><div class="acts">' +
+      '<button class="btn" id="edStyle" type="button" aria-expanded="false"><span class="i">🎨</span><span>' + esc(T('style')) + '</span></button>' +
+      '<button class="btn primary" id="edExport" type="button"><span class="i">⬇️</span><span>' + esc(T('exportSave')) + '</span></button>' +
+      '<button class="btn" id="edShuffle" type="button"><span class="i">🔀</span><span>' + esc(T('reshuffle')) + '</span></button>' +
+      '<button class="btn ghost" id="edSettings" type="button"><span class="i">⚙️</span><span>' + esc(T('changeSetup')) + '</span></button></div></div>';
+    ed.classList.remove('hidden');
+    this.cv = $('edCv'); this.x = this.cv.getContext('2d'); this.sel = -1;
+    $('edBack').onclick = () => history.back();
+    $('edUndo').onclick = () => this.undo(); $('edRedo').onclick = () => this.redoOp();
+    $('zIn').onclick = () => this.zoomBy(1.6); $('zOut').onclick = () => this.zoomBy(1 / 1.6); $('zFit').onclick = () => { this.fit(); this.redraw(); };
+    $('edStyle').onclick = () => this.toggleStyle();
+    $('edExport').onclick = () => exportSheet();
+    $('edShuffle').onclick = () => createMosaic(true);
+    $('edSettings').onclick = () => go('mosaic');
+    this.bindGestures();
+    if (this.ro) this.ro.disconnect();
+    this.ro = new ResizeObserver(() => this.resize()); this.ro.observe($('stage'));
+    this.resize(true); this.syncUndo();
+    $('edHint').textContent = T('edHint', { n: nf(MS.cols * MS.rows) });
+    clearTimeout(this._ht); this._ht = setTimeout(() => { const h = $('edHint'); if (h) h.classList.add('fade'); }, 5000);
+  },
+  close() { if (this.ro) this.ro.disconnect(); this.ro = null; $('editor').classList.add('hidden'); $('editor').innerHTML = ''; this.hi.forEach(b => { try { b.close(); } catch (e) {} }); this.hi.clear(); },
+  resize(first) {
+    const st = $('stage'); if (!st) return;
+    const r = st.getBoundingClientRect(); this.dpr = Math.min(3, devicePixelRatio || 1);
+    const cx = (r.width / 2 - this.tx) / this.s, cy = (r.height / 2 - this.ty) / this.s;
+    this.cv.width = Math.round(r.width * this.dpr); this.cv.height = Math.round(r.height * this.dpr); this.W = r.width; this.H = r.height;
+    if (first || !this._fitS) this.fit(); else { this.tx = r.width / 2 - cx * this.s; this.ty = r.height / 2 - cy * this.s; }
+    this.redraw();
+  },
+  fit() {
+    const cw = MS.comp.width, ch = MS.comp.height, pad = 12;
+    this.s = this._fitS = Math.min((this.W - pad * 2) / cw, (this.H - pad * 2) / ch);
+    this.tx = (this.W - cw * this.s) / 2; this.ty = (this.H - ch * this.s) / 2;
+  },
+  limits() { return [this._fitS * 0.6, Math.max(this._fitS * 2, 420 / MS.ch)]; },
+  zoomAt(ns, px, py) {
+    const [mn, mx] = this.limits(); ns = clamp(ns, mn, mx);
+    const ux = (px - this.tx) / this.s, uy = (py - this.ty) / this.s;
+    this.s = ns; this.tx = px - ux * ns; this.ty = py - uy * ns; this.clampPan(); this.redraw();
+  },
+  zoomBy(f) { this.zoomAt(this.s * f, this.W / 2, this.H / 2); },
+  clampPan() {
+    const w = MS.comp.width * this.s, h = MS.comp.height * this.s, m = 60;
+    this.tx = clamp(this.tx, Math.min(m - w, (this.W - w) / 2), Math.max(this.W - m, (this.W - w) / 2));
+    this.ty = clamp(this.ty, Math.min(m - h, (this.H - h) / 2), Math.max(this.H - m, (this.H - h) / 2));
+  },
+  redraw() { if (this.raf) return; this.raf = requestAnimationFrame(() => { this.raf = 0; this.paint(); }); },
+  paint() {
+    const x = this.x, m = MS, st = S.mosaic; if (!x || !m) return;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, this.cv.width, this.cv.height);
+    x.setTransform(this.dpr * this.s, 0, 0, this.dpr * this.s, this.dpr * this.tx, this.dpr * this.ty);
+    const cellPx = m.ch * this.s * this.dpr;
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    if (cellPx <= m.ch * 1.5) x.drawImage(m.comp, 0, 0);
+    else {
+      const c0 = clamp(Math.floor(-this.tx / this.s / m.cw), 0, m.cols - 1), c1 = clamp(Math.ceil((this.W - this.tx) / this.s / m.cw), 0, m.cols);
+      const r0 = clamp(Math.floor(-this.ty / this.s / m.ch), 0, m.rows - 1), r1 = clamp(Math.ceil((this.H - this.ty) / this.s / m.ch), 0, m.rows);
+      x.save(); x.beginPath(); x.rect(c0 * m.cw, r0 * m.ch, (c1 - c0) * m.cw, (r1 - r0) * m.ch); x.clip();
+      paintBackground(x, m.comp.width, m.comp.height, st); x.restore();
+      const wantHi = cellPx > 70;
+      for (let cy = r0; cy < r1; cy++) for (let cx = c0; cx < c1; cx++) {
+        const i = cy * m.cols + cx, t = m.tileOf[m.assign[i]];
+        let b = wantHi ? this.hi.get(t) : null;
+        if (wantHi && !b) this.loadHi(t);
+        drawCell(x, m, i, cx * m.cw, cy * m.ch, m.cw, m.ch, b || m.minis[t], st);
+      }
+    }
+    if (this.sel >= 0) {
+      const cx = this.sel % m.cols, cy = (this.sel / m.cols) | 0;
+      x.lineWidth = 3 / this.s; x.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#d4af37';
+      x.strokeRect(cx * m.cw, cy * m.ch, m.cw, m.ch);
+    }
+  },
+  loadHi(t) {
+    if (this.loading.has(t)) return; this.loading.add(t);
+    createImageBitmap(MS.tiles[t].blob).then(b => {
+      this.loading.delete(t); this.hi.set(t, b);
+      if (this.hi.size > 160) { const k = this.hi.keys().next().value; try { this.hi.get(k).close(); } catch (e) {} this.hi.delete(k); }
+      this.redraw();
+    }).catch(() => this.loading.delete(t));
+  },
+  bindGestures() {
+    const el = $('stage'), P = new Map(); let g = null;
+    el.addEventListener('pointerdown', e => {
+      if (e.target.closest('.zoomctl')) return;
+      el.setPointerCapture(e.pointerId); P.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      if (P.size === 1) g = { k: 1, x: e.offsetX, y: e.offsetY, tx: this.tx, ty: this.ty, t: Date.now(), moved: false };
+      else if (P.size === 2) { const [a, b] = [...P.values()]; g = { k: 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, s: this.s, tx: this.tx, ty: this.ty, moved: true }; }
+    });
+    el.addEventListener('pointermove', e => {
+      if (!P.has(e.pointerId) || !g) return;
+      P.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      if (g.k === 1 && P.size === 1) {
+        const dx = e.offsetX - g.x, dy = e.offsetY - g.y;
+        if (Math.abs(dx) + Math.abs(dy) > 7) g.moved = true;
+        if (g.moved) { this.tx = g.tx + dx; this.ty = g.ty + dy; this.clampPan(); this.redraw(); }
+      } else if (g.k === 2 && P.size >= 2) {
+        const [a, b] = [...P.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const [mn, mxs] = this.limits(); const ns = clamp(g.s * d / g.d, mn, mxs);
+        const ux = (g.mx - g.tx) / g.s, uy = (g.my - g.ty) / g.s;
+        this.s = ns; this.tx = mx - ux * ns; this.ty = my - uy * ns; this.clampPan(); this.redraw();
+      }
+    });
+    const end = e => {
+      if (!P.has(e.pointerId)) return;
+      P.delete(e.pointerId);
+      if (g && g.k === 1 && !g.moved && Date.now() - g.t < 400 && e.type === 'pointerup') this.tap(e.offsetX, e.offsetY);
+      if (P.size === 1) { const [a] = [...P.values()]; g = { k: 1, x: a.x, y: a.y, tx: this.tx, ty: this.ty, t: 0, moved: true }; }
+      else if (!P.size) g = null;
+    };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+    el.addEventListener('wheel', e => { e.preventDefault(); this.zoomAt(this.s * Math.pow(1.0015, -e.deltaY), e.offsetX, e.offsetY); }, { passive: false });
+  },
+  tap(px, py) {
+    const m = MS, ux = (px - this.tx) / this.s, uy = (py - this.ty) / this.s;
+    const cx = Math.floor(ux / m.cw), cy = Math.floor(uy / m.ch);
+    if (cx < 0 || cy < 0 || cx >= m.cols || cy >= m.rows) { this.sel = -1; this.redraw(); return; }
+    this.sel = cy * m.cols + cx; this.redraw(); swapSheet(this.sel);
+  },
+  apply(i, e, rec) {
+    const prev = MS.assign[i]; if (prev === e) return;
+    MS.assign[i] = e; if (rec !== false) { MS.undo.push([i, prev, e]); MS.redo = []; }
+    MS.saved = false; updateCompositeCell(MS, i, S.mosaic); this.redraw(); this.syncUndo();
+  },
+  undo() { const u = MS.undo.pop(); if (!u) return; MS.assign[u[0]] = u[1]; MS.redo.push(u); updateCompositeCell(MS, u[0], S.mosaic); this.sel = u[0]; this.redraw(); this.syncUndo(); },
+  redoOp() { const u = MS.redo.pop(); if (!u) return; MS.assign[u[0]] = u[2]; MS.undo.push(u); updateCompositeCell(MS, u[0], S.mosaic); this.sel = u[0]; this.redraw(); this.syncUndo(); },
+  syncUndo() { if ($('edUndo')) { $('edUndo').disabled = !MS.undo.length; $('edRedo').disabled = !MS.redo.length; $('edUndo').style.opacity = MS.undo.length ? 1 : .4; $('edRedo').style.opacity = MS.redo.length ? 1 : .4; } },
+  toggleStyle() {
+    const p = $('stylePanel'), open = p.classList.contains('hidden');
+    $('edStyle').setAttribute('aria-expanded', open);
+    if (!open) { p.classList.add('hidden'); return; }
+    const st = S.mosaic;
+    p.innerHTML = '<div class="grid2">' +
+      '<div><label class="f" for="stTint">' + esc(T('tint')) + ': <span class="val" id="vTint">' + st.tint + '%</span></label><input type="range" id="stTint" min="0" max="60" value="' + st.tint + '"><div class="small muted">' + esc(T('tintHint')) + '</div></div>' +
+      '<div><label class="f" for="stOver">' + esc(T('overlay')) + ': <span class="val" id="vOver">' + st.overlay + '%</span></label><input type="range" id="stOver" min="0" max="50" value="' + st.overlay + '"><div class="small muted">' + esc(T('overlayHint')) + '</div></div>' +
+      '<div><label class="f" for="stGrout">' + esc(T('grout')) + ': <span class="val" id="vGrout">' + st.grout + '</span></label><input type="range" id="stGrout" min="0" max="8" value="' + st.grout + '"></div>' +
+      '<div><label class="f">' + esc(T('groutColor')) + '</label><div class="swatches" id="stGC">' + ['#000000', '#ffffff', '#d4af37', '#1c2a44', '#7a1f2b'].map(c => '<button type="button" data-c="' + c + '" class="' + (st.groutColor === c ? 'on' : '') + '" style="background:' + c + '" aria-label="' + c + '"></button>').join('') +
+      '<input type="color" id="stGCi" value="' + st.groutColor + '" aria-label="' + esc(T('customColor')) + '"></div></div>' +
+      '</div><label class="f">' + esc(T('shape')) + '</label><div class="seg" id="stShape">' +
+      ['square', 'rounded', 'circle'].map(v => '<button type="button" data-v="' + v + '" class="' + (st.shape === v ? 'on' : '') + '">' + esc(T('sh_' + v)) + '</button>').join('') + '</div>';
+    p.classList.remove('hidden');
+    let tmr = 0;
+    const rebuild = () => { clearTimeout(tmr); tmr = setTimeout(() => { buildComposite(MS, st); MS.saved = false; this.redraw(); saveS(); }, 60); };
+    const bindR = (id, k, v, suf) => { $(id).oninput = e => { st[k] = +e.target.value; $(v).textContent = st[k] + (suf || ''); rebuild(); }; };
+    bindR('stTint', 'tint', 'vTint', '%'); bindR('stOver', 'overlay', 'vOver', '%'); bindR('stGrout', 'grout', 'vGrout');
+    $('stGC').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { st.groutColor = b.dataset.c; $('stGC').querySelectorAll('[data-c]').forEach(z => z.classList.toggle('on', z === b)); $('stGCi').value = st.groutColor; rebuild(); });
+    $('stGCi').oninput = e => { st.groutColor = e.target.value; $('stGC').querySelectorAll('[data-c]').forEach(z => z.classList.remove('on')); rebuild(); };
+    $('stShape').querySelectorAll('button').forEach(b => b.onclick = () => { st.shape = b.dataset.v; $('stShape').querySelectorAll('button').forEach(z => z.classList.toggle('on', z === b)); rebuild(); });
+  }
+};
+
+/* swap sheet: best alternatives for one cell */
+function swapSheet(i) {
+  const m = MS, base = i * FD, M = m.tileOf.length, d = new Float32Array(M), idx = new Int32Array(M);
+  for (let e = 0; e < M; e++) { let s = 0; const o = e * FD; for (let k = 0; k < FD; k++) { const t = m.cf[base + k] - m.tf[o + k]; s += t * t; } d[e] = s; idx[e] = e; }
+  const order = [...idx].sort((a, b) => d[a] - d[b]);
+  const cur = m.assign[i];
+  const uses = new Int32Array(m.N); for (let k = 0; k < m.assign.length; k++) uses[m.tileOf[m.assign[k]]]++;
+  let shown = 0;
+  const mk = n => {
+    let h = '';
+    for (const e of order.slice(shown, shown + n)) {
+      h += '<button type="button" data-e="' + e + '" class="' + (e === cur ? 'cur' : '') + '" aria-label="' + esc(T('useThis')) + '"><canvas data-e="' + e + '"></canvas>' + (m.flipOf[e] ? '<small>⇋</small>' : '') + '</button>';
+    }
+    shown += n; return h;
+  };
+  const md = openModal({
+    title: T('swapTitle'),
+    html: '<p class="small muted" style="margin-top:-4px">' + esc(T('swapHint', { u: nf(uses[m.tileOf[cur]]) })) + '</p><div class="alts" id="alts">' + mk(36) + '</div>' +
+      '<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="altMore" type="button">' + esc(T('showMore')) + '</button>' +
+      '<button class="btn ghost sm" id="altFlip" type="button">⇋ ' + esc(T('flipThis')) + '</button></div>',
+    onClose: () => { Ed.sel = -1; Ed.redraw(); },
+    actions: [{ label: T('close'), cls: 'primary' }]
+  });
+  const paintAlts = () => {
+    md.body.querySelectorAll('canvas[data-e]:not([data-p])').forEach(c => {
+      const e = +c.dataset.e, b = m.minis[m.tileOf[e]], w = 96, h = Math.round(96 / m.a);
+      c.width = w; c.height = h; c.dataset.p = 1;
+      const x = c.getContext('2d'), [sx, sy, sw, sh] = cropToAspect(b.width, b.height, m.a);
+      if (m.flipOf[e]) { x.translate(w, 0); x.scale(-1, 1); }
+      x.drawImage(b, sx, sy, sw, sh, 0, 0, w, h);
+    });
+    md.body.querySelectorAll('button[data-e]:not([data-b])').forEach(b => { b.dataset.b = 1; b.onclick = () => { Ed.apply(i, +b.dataset.e); md.close(); }; });
+  };
+  paintAlts();
+  $('altMore').onclick = () => { $('alts').insertAdjacentHTML('beforeend', mk(60)); paintAlts(); if (shown >= order.length) $('altMore').remove(); };
+  const flipE = m.flipOf[cur] ? cur - m.N : cur + m.N;
+  if (flipE >= 0 && flipE < M && m.tileOf[flipE] === m.tileOf[cur]) $('altFlip').onclick = () => { Ed.apply(i, flipE); md.close(); };
+  else $('altFlip').remove();
+}
+
+/* export / save / share sheet (mosaic) */
+function exportSheet() {
+  const m = MS, st = S.mosaic;
+  exportFlow({
+    sizes: { '2k': 2048, '4k': 4096, '8k': 8192 }, sizeKey: () => st.size, setSize: k => { st.size = k; },
+    dims: long => exportDims(m, long),
+    render: (long, p) => renderExport(m, st, long, p, S.sign && !!S.name),
+    kind: 'mosaic', name: () => m.name || T('mosaic'),
+    thumb: () => thumbOf(m.comp, m.comp.width, m.comp.height),
+    onSaved: () => { m.saved = true; }
+  });
+}
+
+/* ═══ CollageNest — shared export flow + grid collage (templates, pan/zoom per cell, swap) ═══ */
+
+/* generic export: size + format (+signature) → download / share / save to gallery */
+function exportFlow(o) {
+  const sizes = o.sizes;
+  const dimTxt = k => { const d = o.dims(sizes[k]); return nf(d.W) + '×' + nf(d.H); };
+  const md = openModal({
+    title: T('exportTitle'),
+    html: '<label class="f">' + esc(T('size')) + '</label><div class="seg" id="exSize">' +
+      Object.keys(sizes).map(k => '<button type="button" data-v="' + k + '" class="' + (o.sizeKey() === k ? 'on' : '') + '">' + esc(k.toUpperCase()) + '<br><small class="muted">' + dimTxt(k) + '</small></button>').join('') + '</div>' +
+      (isCoarse() ? '<div class="small muted" style="margin-top:6px">' + esc(T('phoneLimit')) + '</div>' : '') +
+      '<label class="f">' + esc(T('format')) + '</label><div class="seg" id="exFmt">' + ['jpg', 'png'].map(f => '<button type="button" data-v="' + f + '" class="' + (S.fmt === f ? 'on' : '') + '">' + f.toUpperCase() + '</button>').join('') + '</div>' +
+      '<div class="small muted" style="margin-top:6px">' + esc(T('fmtHint')) + '</div>' +
+      (S.name ? '<div class="sw" style="margin-top:8px"><span>' + esc(T('addSignature')) + '</span><label class="toggle"><input type="checkbox" id="exSign" ' + (S.sign ? 'checked' : '') + ' aria-label="' + esc(T('addSignature')) + '"><span></span></label></div>' : ''),
+    actions: [
+      { label: '⬇️ ' + T('download'), cls: 'primary', keep: true, onClick: () => run('download') },
+      { label: '📤 ' + T('share'), cls: '', keep: true, onClick: () => run('share') },
+      { label: '💾 ' + T('saveGallery'), cls: '', keep: true, onClick: () => run('gallery') }
+    ]
+  });
+  md.body.querySelectorAll('#exSize button').forEach(b => b.onclick = () => { o.setSize(b.dataset.v); saveS(); md.body.querySelectorAll('#exSize button').forEach(z => z.classList.toggle('on', z === b)); });
+  md.body.querySelectorAll('#exFmt button').forEach(b => b.onclick = () => { S.fmt = b.dataset.v; saveS(); md.body.querySelectorAll('#exFmt button').forEach(z => z.classList.toggle('on', z === b)); });
+  if ($('exSign')) $('exSign').onchange = e => { S.sign = e.target.checked; saveS(); };
+  async function run(kind) {
+    const p = Prog.show(T('rendering'), true);
+    let long = sizes[o.sizeKey()] || 4096, out = null;
+    for (let tries = 0; tries < 3 && !out; tries++) {
+      try {
+        const r = await o.render(long, p);
+        p.set(0.95, T('encoding')); await yieldUI();
+        const blob = await encodeCanvas(r.c, S.fmt);
+        r.c.width = r.c.height = 1;
+        out = { blob, W: r.W, H: r.H };
+      } catch (e) {
+        if (e && e.message === 'cancel') { p.close(); toast(T('cancelled')); return; }
+        logErr('export ' + long + ': ' + (e && e.message)); long = Math.round(long * 0.6);
+        if (tries < 2) toast(T('exportRetry'), true);
+      }
+    }
+    if (!out) { p.close(); toast(T('exportFail'), true); return; }
+    const fname = 'CollageNest-' + o.kind + '-' + fileStamp() + '.' + (S.fmt === 'png' ? 'png' : 'jpg');
+    if (kind === 'gallery') {
+      p.set(0.98, T('saving'));
+      try {
+        await DB.put('gallery', { id: uid(), kind: o.kind, name: o.name(), created: Date.now(), W: out.W, H: out.H, fmt: S.fmt, blob: out.blob, thumb: await o.thumb() });
+        if (o.onSaved) o.onSaved();
+        p.close(); toast(T('savedGallery'));
+      } catch (e) { p.close(); toast(T('storageFull'), true); }
+      return;
+    }
+    p.close();
+    if (kind === 'share') await shareBlob(out.blob, fname);
+    else { downloadBlob(out.blob, fname); toast(T('downloaded', { w: nf(out.W), h: nf(out.H) })); }
+  }
+}
+
+/* ── templates (fractions of the canvas) ── */
+function gridTpl(c, r) { const a = []; for (let y = 0; y < r; y++) for (let x = 0; x < c; x++) a.push([x / c, y / r, 1 / c, 1 / r]); return a; }
+const TPL = [
+  gridTpl(1, 1),
+  gridTpl(2, 1), gridTpl(1, 2),
+  gridTpl(3, 1), gridTpl(1, 3),
+  [[0, 0, .6, 1], [.6, 0, .4, .5], [.6, .5, .4, .5]],
+  [[0, 0, 1, .6], [0, .6, .5, .4], [.5, .6, .5, .4]],
+  gridTpl(2, 2),
+  [[0, 0, .64, 1], [.64, 0, .36, 1 / 3], [.64, 1 / 3, .36, 1 / 3], [.64, 2 / 3, .36, 1 / 3]],
+  [[0, 0, 1, .62], [0, .62, 1 / 3, .38], [1 / 3, .62, 1 / 3, .38], [2 / 3, .62, 1 / 3, .38]],
+  [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, 1 / 3, .5], [1 / 3, .5, 1 / 3, .5], [2 / 3, .5, 1 / 3, .5]],
+  [[0, 0, .6, .6], [.6, 0, .4, .3], [.6, .3, .4, .3], [0, .6, .5, .4], [.5, .6, .5, .4]],
+  gridTpl(3, 2), gridTpl(2, 3),
+  [[0, 0, 2 / 3, 2 / 3], [2 / 3, 0, 1 / 3, 1 / 3], [2 / 3, 1 / 3, 1 / 3, 1 / 3], [0, 2 / 3, 1 / 3, 1 / 3], [1 / 3, 2 / 3, 1 / 3, 1 / 3], [2 / 3, 2 / 3, 1 / 3, 1 / 3]],
+  [[0, 0, 1 / 3, .5], [1 / 3, 0, 1 / 3, .5], [2 / 3, 0, 1 / 3, .5], [0, .5, .25, .5], [.25, .5, .25, .5], [.5, .5, .25, .5], [.75, .5, .25, .5]],
+  gridTpl(4, 2), gridTpl(2, 4),
+  gridTpl(3, 3),
+  [[.25, .25, .5, .5], [0, 0, .25, .25], [.25, 0, .25, .25], [.5, 0, .25, .25], [.75, 0, .25, .25], [0, .25, .25, .25], [.75, .25, .25, .25], [0, .5, .25, .25], [.75, .5, .25, .25], [0, .75, .25, .25], [.25, .75, .25, .25], [.5, .75, .25, .25], [.75, .75, .25, .25]],
+  gridTpl(4, 3), gridTpl(3, 4),
+  gridTpl(4, 4)
+];
+const RATIOS = { '1:1': 1, '4:5': 0.8, '3:4': 0.75, '9:16': 9 / 16, '16:9': 16 / 9, '4:3': 4 / 3 };
+const MAX_COLLAGE = 16;
+function bestTpl(n) {
+  let best = 0, bd = 1e9;
+  TPL.forEach((t, i) => { const d = t.length >= n ? t.length - n : (n - t.length) * 3; if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+function tplSVG(t) {
+  return '<svg viewBox="0 0 100 100" aria-hidden="true">' + t.map(r => '<rect x="' + (r[0] * 100 + 3) + '" y="' + (r[1] * 100 + 3) + '" width="' + (r[2] * 100 - 6) + '" height="' + (r[3] * 100 - 6) + '" rx="6" fill="currentColor" opacity=".55"/>').join('') + '</svg>';
+}
+
+let CS = null; // collage session
+async function decodeForCollage(files, n) {
+  const maxSide = clamp(Math.round(3600 / Math.sqrt(Math.max(1, n))), 900, 2048);
+  const out = [];
+  const p = Prog.show(T('loadingPhotos'), true);
+  for (let i = 0; i < files.length && !p.cancelled; i++) {
+    try {
+      let b = await decodeImage(files[i]);
+      if (Math.max(b.width, b.height) > maxSide) {
+        const s = maxSide / Math.max(b.width, b.height), c = mkCanvas(Math.round(b.width * s), Math.round(b.height * s));
+        const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(b, 0, 0, c.width, c.height); b.close(); b = await createImageBitmap(c);
+      }
+      out.push(b);
+    } catch (e) { toast(isHeic(files[i]) ? T('heicFail', { n: 1 }) : T('decodeFail'), true); }
+    p.set((i + 1) / files.length, nf(i + 1) + ' / ' + nf(files.length));
+  }
+  p.close();
+  return out;
+}
+async function newCollage() {
+  let files = (await pickFiles('many')).filter(isImageFile);
+  if (!files.length) return;
+  if (files.length > MAX_COLLAGE) { toast(T('collageMax', { n: MAX_COLLAGE }), true); files = files.slice(0, MAX_COLLAGE); }
+  const bmps = await decodeForCollage(files, files.length);
+  if (!bmps.length) return;
+  if (CS) CS.photos.forEach(b => { try { b.close(); } catch (e) {} });
+  const ti = bestTpl(bmps.length);
+  CS = { photos: bmps, tpl: ti, cells: [], sel: -1, swap: -1, saved: false };
+  layoutCells();
+  go('collageEd');
+}
+function layoutCells() {
+  const t = TPL[CS.tpl], old = CS.cells;
+  CS.cells = t.map((r, i) => old[i] ? old[i] : { p: -1, z: 1, ox: 0, oy: 0 });
+  const used = new Set(CS.cells.map(c => c.p).filter(p => p >= 0));
+  let next = 0;
+  CS.cells.forEach(c => { if (c.p < 0 || c.p >= CS.photos.length) { while (next < CS.photos.length && used.has(next)) next++; if (next < CS.photos.length) { c.p = next; used.add(next); c.z = 1; c.ox = c.oy = 0; } else c.p = -1; } });
+  if (CS.sel >= CS.cells.length) CS.sel = -1;
+}
+function cellRects(W, H) {
+  const st = S.collage, g = st.gap * Math.min(W, H) / 200;
+  return TPL[CS.tpl].map(r => {
+    const x = g + r[0] * (W - g), y = g + r[1] * (H - g);
+    return [x, y, r[2] * (W - g) - g, r[3] * (H - g) - g];
+  });
+}
+function drawCollage(x, W, H, preview) {
+  const st = S.collage, rad = st.radius * Math.min(W, H) / 200;
+  x.fillStyle = st.bg; x.fillRect(0, 0, W, H);
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  cellRects(W, H).forEach((r, i) => {
+    const c = CS.cells[i], [cx, cy, cw, ch] = r;
+    if (cw <= 0 || ch <= 0) return;
+    x.save(); x.beginPath();
+    if (rad > 0 && x.roundRect) x.roundRect(cx, cy, cw, ch, Math.min(rad, cw / 2, ch / 2)); else x.rect(cx, cy, cw, ch);
+    x.clip();
+    const b = c.p >= 0 ? CS.photos[c.p] : null;
+    if (b) {
+      const s = Math.max(cw / b.width, ch / b.height) * c.z, dw = b.width * s, dh = b.height * s;
+      x.drawImage(b, cx + (cw - dw) / 2 + c.ox * (dw - cw) / 2, cy + (ch - dh) / 2 + c.oy * (dh - ch) / 2, dw, dh);
+    } else if (preview) {
+      x.fillStyle = 'rgba(128,128,128,.25)'; x.fillRect(cx, cy, cw, ch);
+      x.fillStyle = 'rgba(128,128,128,.9)'; x.font = Math.round(Math.min(cw, ch) * 0.3) + 'px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText('+', cx + cw / 2, cy + ch / 2);
+    }
+    x.restore();
+    if (preview && (i === CS.sel || i === CS.swap)) {
+      x.save(); x.lineWidth = Math.max(3, Math.min(W, H) * 0.008); x.strokeStyle = i === CS.swap ? '#ff9f43' : (getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d4af37');
+      x.setLineDash(i === CS.swap ? [12, 8] : []); x.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2); x.restore();
+    }
+  });
+}
+function collageDims(long) { const a = RATIOS[S.collage.ratio] || 1; return a >= 1 ? { W: long, H: Math.round(long / a) } : { W: Math.round(long * a), H: long }; }
+
+const CEd = {
+  open() {
+    const ed = $('editor');
+    ed.innerHTML = '<header class="top"><button class="homebtn" id="ceBack" type="button">' + (isRTL() ? '→ ' : '← ') + esc(T('back')) + '</button><h1>' + esc(T('collage')) + '</h1></header>' +
+      '<div class="stage" id="cstage" style="background:var(--bg)"><canvas id="ceCv" aria-label="' + esc(T('collageCanvas')) + '"></canvas><div class="hint" id="ceHint"></div></div>' +
+      '<div class="dock"><div class="panel" id="cePanel"></div><div class="acts" id="ceActs"></div></div>';
+    ed.classList.remove('hidden');
+    this.cv = $('ceCv'); this.x = this.cv.getContext('2d'); this.panel = null;
+    $('ceBack').onclick = () => history.back();
+    if (this.ro) this.ro.disconnect();
+    this.ro = new ResizeObserver(() => this.resize()); this.ro.observe($('cstage'));
+    this.bind(); this.resize(); this.dockUI();
+  },
+  close() { if (this.ro) this.ro.disconnect(); this.ro = null; $('editor').classList.add('hidden'); $('editor').innerHTML = ''; },
+  resize() {
+    const st = $('cstage'); if (!st) return;
+    const r = st.getBoundingClientRect(), a = RATIOS[S.collage.ratio] || 1, pad = 14;
+    let w = r.width - pad * 2, h = w / a; if (h > r.height - pad * 2) { h = r.height - pad * 2; w = h * a; }
+    this.dpr = Math.min(3, devicePixelRatio || 1); this.w = w; this.h = h;
+    Object.assign(this.cv.style, { inset: 'auto', width: w + 'px', height: h + 'px', left: (r.width - w) / 2 + 'px', top: (r.height - h) / 2 + 'px', boxShadow: 'var(--shadow)' });
+    this.cv.width = Math.round(w * this.dpr); this.cv.height = Math.round(h * this.dpr);
+    this.paint();
+  },
+  paint() { if (!this.x) return; this.x.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); drawCollage(this.x, this.w, this.h, true); },
+  hit(px, py) { const rs = cellRects(this.w, this.h); for (let i = 0; i < rs.length; i++) { const [x, y, w, h] = rs[i]; if (px >= x && py >= y && px <= x + w && py <= y + h) return i; } return -1; },
+  bind() {
+    const el = this.cv, P = new Map(); let g = null;
+    el.style.touchAction = 'none';
+    el.addEventListener('pointerdown', e => {
+      el.setPointerCapture(e.pointerId); P.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      const c = CS.sel >= 0 ? CS.cells[CS.sel] : null;
+      if (P.size === 1) g = { k: 1, x: e.offsetX, y: e.offsetY, t: Date.now(), moved: false, ox: c && c.ox, oy: c && c.oy, onSel: this.hit(e.offsetX, e.offsetY) === CS.sel && CS.sel >= 0 };
+      else if (P.size === 2 && c && c.p >= 0) { const [a, b] = [...P.values()]; g = { k: 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: c.z, moved: true }; }
+    });
+    el.addEventListener('pointermove', e => {
+      if (!P.has(e.pointerId) || !g) return;
+      P.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      const c = CS.sel >= 0 ? CS.cells[CS.sel] : null;
+      if (g.k === 1 && P.size === 1) {
+        const dx = e.offsetX - g.x, dy = e.offsetY - g.y;
+        if (Math.abs(dx) + Math.abs(dy) > 6) g.moved = true;
+        if (g.moved && g.onSel && c && c.p >= 0) {
+          const [, , cw, ch] = cellRects(this.w, this.h)[CS.sel], b = CS.photos[c.p];
+          const s = Math.max(cw / b.width, ch / b.height) * c.z, ex = (b.width * s - cw) / 2, ey = (b.height * s - ch) / 2;
+          c.ox = ex > 0 ? clamp(g.ox + dx / ex, -1, 1) : 0; c.oy = ey > 0 ? clamp(g.oy + dy / ey, -1, 1) : 0;
+          CS.saved = false; this.paint();
+        }
+      } else if (g.k === 2 && c) {
+        const [a, b] = [...P.values()]; c.z = clamp(g.z * (Math.hypot(a.x - b.x, a.y - b.y) || 1) / g.d, 1, 4); CS.saved = false;
+        const zr = $('ceZoom'); if (zr) zr.value = c.z; this.paint();
+      }
+    });
+    const end = e => {
+      if (!P.has(e.pointerId)) return; P.delete(e.pointerId);
+      if (g && g.k === 1 && !g.moved && e.type === 'pointerup' && Date.now() - g.t < 450) this.tap(e.offsetX, e.offsetY);
+      if (!P.size) g = null;
+    };
+    el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  },
+  async tap(px, py) {
+    const i = this.hit(px, py);
+    if (CS.swap >= 0) {
+      if (i >= 0 && i !== CS.swap) { const a = CS.cells[CS.swap]; CS.cells[CS.swap] = CS.cells[i]; CS.cells[i] = a; CS.sel = i; CS.saved = false; }
+      CS.swap = -1; this.paint(); this.dockUI(); return;
+    }
+    if (i < 0) { CS.sel = -1; this.paint(); this.dockUI(); return; }
+    if (CS.cells[i].p < 0) { CS.sel = i; await this.replace(i); return; }
+    CS.sel = CS.sel === i ? -1 : i; this.paint(); this.dockUI();
+  },
+  async replace(i) {
+    const f = (await pickFiles('one'))[0]; if (!f) { this.paint(); this.dockUI(); return; }
+    const b = (await decodeForCollage([f], CS.cells.length))[0]; if (!b) return;
+    CS.photos.push(b); Object.assign(CS.cells[i], { p: CS.photos.length - 1, z: 1, ox: 0, oy: 0 }); CS.saved = false;
+    this.paint(); this.dockUI();
+  },
+  dockUI() {
+    const acts = $('ceActs'), panel = $('cePanel'); if (!acts) return;
+    const c = CS.sel >= 0 ? CS.cells[CS.sel] : null;
+    const hn = $('ceHint'); hn.textContent = CS.swap >= 0 ? T('swapPick') : (c ? T('cellHint') : T('collageHint')); hn.classList.remove('fade'); clearTimeout(this._ht); this._ht = setTimeout(() => hn.classList.add('fade'), CS.swap >= 0 ? 8000 : 4000);
+    if (c) {
+      panel.innerHTML = c.p >= 0 ? '<label class="f" for="ceZoom">' + esc(T('zoom')) + '</label><input type="range" id="ceZoom" min="1" max="4" step="0.01" value="' + c.z + '">' : '';
+      acts.innerHTML = '<button class="btn" id="ceRep" type="button"><span class="i">🖼️</span><span>' + esc(T('replace')) + '</span></button>' +
+        (CS.cells.length > 1 ? '<button class="btn" id="ceSwap" type="button"><span class="i">⇄</span><span>' + esc(T('swapWith')) + '</span></button>' : '') +
+        (c.p >= 0 ? '<button class="btn ghost" id="ceReset" type="button"><span class="i">↺</span><span>' + esc(T('resetCell')) + '</span></button><button class="btn danger" id="ceDel" type="button"><span class="i">🗑</span><span>' + esc(T('removePhoto')) + '</span></button>' : '') +
+        '<button class="btn primary" id="ceDone" type="button"><span class="i">✓</span><span>' + esc(T('done')) + '</span></button>';
+      if ($('ceZoom')) $('ceZoom').oninput = e => { c.z = +e.target.value; CS.saved = false; this.paint(); };
+      $('ceRep').onclick = () => this.replace(CS.sel);
+      if ($('ceSwap')) $('ceSwap').onclick = () => { CS.swap = CS.sel; this.paint(); this.dockUI(); };
+      if ($('ceReset')) $('ceReset').onclick = () => { Object.assign(c, { z: 1, ox: 0, oy: 0 }); this.paint(); this.dockUI(); };
+      if ($('ceDel')) $('ceDel').onclick = () => { c.p = -1; CS.saved = false; this.paint(); this.dockUI(); };
+      $('ceDone').onclick = () => { CS.sel = -1; this.paint(); this.dockUI(); };
+      return;
+    }
+    const pan = this.panel;
+    const st = S.collage;
+    if (pan === 'tpl') panel.innerHTML = '<div class="tpls">' + TPL.map((t, i) => '<button type="button" data-t="' + i + '" class="' + (i === CS.tpl ? 'on' : '') + '" aria-label="' + esc(T('tplN', { n: t.length })) + '">' + tplSVG(t) + '</button>').join('') + '</div>';
+    else if (pan === 'ratio') panel.innerHTML = '<div class="seg">' + Object.keys(RATIOS).map(k => '<button type="button" data-r="' + k + '" class="' + (st.ratio === k ? 'on' : '') + '">' + k + '</button>').join('') + '</div>';
+    else if (pan === 'style') panel.innerHTML = '<div class="grid2"><div><label class="f" for="ceGap">' + esc(T('spacing')) + ': <span class="val" id="vGap">' + st.gap + '</span></label><input type="range" id="ceGap" min="0" max="10" step="0.5" value="' + st.gap + '"></div>' +
+      '<div><label class="f" for="ceRad">' + esc(T('corners')) + ': <span class="val" id="vRad">' + st.radius + '</span></label><input type="range" id="ceRad" min="0" max="12" step="0.5" value="' + st.radius + '"></div></div>' +
+      '<label class="f">' + esc(T('background')) + '</label><div class="swatches" id="ceBg">' + ['#ffffff', '#000000', '#f3ead7', '#d4af37', '#1c2a44', '#e8d5e0'].map(cc => '<button type="button" data-c="' + cc + '" class="' + (st.bg === cc ? 'on' : '') + '" style="background:' + cc + '" aria-label="' + cc + '"></button>').join('') + '<input type="color" id="ceBgI" value="' + st.bg + '" aria-label="' + esc(T('customColor')) + '"></div>';
+    else panel.innerHTML = '';
+    acts.innerHTML = '<button class="btn' + (pan === 'tpl' ? ' primary' : '') + '" data-p="tpl" type="button"><span class="i">🧩</span><span>' + esc(T('template')) + '</span></button>' +
+      '<button class="btn' + (pan === 'ratio' ? ' primary' : '') + '" data-p="ratio" type="button"><span class="i">📐</span><span>' + esc(T('ratio')) + '</span></button>' +
+      '<button class="btn' + (pan === 'style' ? ' primary' : '') + '" data-p="style" type="button"><span class="i">🎨</span><span>' + esc(T('style')) + '</span></button>' +
+      '<button class="btn" id="ceAdd" type="button"><span class="i">➕</span><span>' + esc(T('photos')) + '</span></button>' +
+      '<button class="btn primary" id="ceExport" type="button"><span class="i">⬇️</span><span>' + esc(T('exportSave')) + '</span></button>';
+    acts.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { this.panel = this.panel === b.dataset.p ? null : b.dataset.p; this.dockUI(); });
+    panel.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { CS.tpl = +b.dataset.t; layoutCells(); CS.saved = false; this.paint(); this.dockUI(); });
+    panel.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { st.ratio = b.dataset.r; saveS(); CS.saved = false; this.resize(); this.dockUI(); });
+    if ($('ceGap')) {
+      $('ceGap').oninput = e => { st.gap = +e.target.value; $('vGap').textContent = st.gap; saveS(); this.paint(); };
+      $('ceRad').oninput = e => { st.radius = +e.target.value; $('vRad').textContent = st.radius; saveS(); this.paint(); };
+      $('ceBg').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { st.bg = b.dataset.c; $('ceBgI').value = st.bg; saveS(); this.paint(); this.dockUI(); });
+      $('ceBgI').oninput = e => { st.bg = e.target.value; saveS(); this.paint(); };
+    }
+    $('ceAdd').onclick = async () => {
+      let files = (await pickFiles('many')).filter(isImageFile); if (!files.length) return;
+      const room = MAX_COLLAGE - CS.photos.length; if (room <= 0) { toast(T('collageMax', { n: MAX_COLLAGE }), true); return; }
+      if (files.length > room) { toast(T('collageMax', { n: MAX_COLLAGE }), true); files = files.slice(0, room); }
+      const bm = await decodeForCollage(files, CS.photos.length + files.length);
+      CS.photos.push(...bm);
+      const filled = CS.cells.filter(c => c.p >= 0).length;
+      if (filled + bm.length > CS.cells.length) CS.tpl = bestTpl(filled + bm.length);
+      layoutCells(); CS.saved = false; this.paint(); this.dockUI();
+    };
+    $('ceExport').onclick = () => {
+      if (!CS.cells.some(c => c.p >= 0)) { toast(T('collageEmpty'), true); return; }
+      exportFlow({
+        sizes: { '2k': 2048, '3k': 3072, '4k': 4096 }, sizeKey: () => ({ 2048: '2k', 3072: '3k', 4096: '4k' }[st.size] || '3k'), setSize: k => { st.size = { '2k': 2048, '3k': 3072, '4k': 4096 }[k]; },
+        dims: long => collageDims(long),
+        render: async long => {
+          const d = collageDims(long), c = document.createElement('canvas'); c.width = d.W; c.height = d.H;
+          const x = c.getContext('2d'); drawCollage(x, d.W, d.H, false); if (S.sign && S.name) drawSignature(x, d.W, d.H); return { c, W: d.W, H: d.H };
+        },
+        kind: 'collage', name: () => T('collage'),
+        thumb: async () => { const d = collageDims(360), c = mkCanvas(d.W, d.H); drawCollage(c.getContext('2d'), d.W, d.H, false); return await canvasToBlob(c, 'image/jpeg', 0.82); },
+        onSaved: () => { CS.saved = true; }
+      });
+    };
+  }
+};
+
+async function renderCollageSetup() {
+  $('main').innerHTML = '<div class="screen">' +
+    (CS ? '<button class="btn primary big" id="cResume" type="button" style="margin-bottom:14px">✏️ ' + esc(T('resumeCollage')) + '</button>' : '') +
+    '<div class="card"><h3>🖼️ ' + esc(T('collage')) + '</h3><p class="muted">' + esc(T('collageIntro', { n: MAX_COLLAGE })) + '</p>' +
+    '<button class="pickbox" id="cPick" type="button"><span class="em">➕</span><span><b>' + esc(T('pickPhotos')) + '</b><br><small class="muted">' + esc(T('pickPhotosHint', { n: MAX_COLLAGE })) + '</small></span></button></div>' +
+    '<div class="card"><h3>🧩 ' + esc(T('templates')) + '</h3><div class="tpls" style="pointer-events:none;color:var(--accent)">' + TPL.slice(0, 12).map(t => '<div class="tpl" style="padding:4px;border:1px solid var(--line);border-radius:10px;aspect-ratio:1">' + tplSVG(t) + '</div>').join('') + '</div></div></div>';
+  if ($('cResume')) $('cResume').onclick = () => go('collageEd');
+  $('cPick').onclick = newCollage;
+}
+
+/* ═══ CollageNest — LANG (5 languages). Missing key → English. ═══ */
+const LANG = {};
+LANG.en = {
+  langName: 'English', skip: 'Skip to content', home: 'Home', back: 'Back', ok: 'OK', cancel: 'Cancel', cancelling: 'Stopping…', cancelled: 'Cancelled', close: 'Close',
+  save: 'Save', create: 'Create', delete: 'Delete', deleted: 'Deleted', edit: 'Edit', remove: 'Remove', done: 'Done', next: 'Next', prev: 'Back', start: "Let's start", continue: 'Continue',
+  areYouSure: 'Are you sure?', name: 'Name', photo: 'Photo', photos: 'Photos', copy: 'Copy', copied: 'Copied', copyFail: 'Could not copy', unknown: 'Unknown',
+  saveFail: 'Saving failed — storage is blocked or full', screenFail: 'Something went wrong on this screen. Try again.',
+  tagline: 'Photo mosaics and collages — made on your device', hello: 'Hi {name} 👋',
+  mosaicTitle: 'Photo mosaic', mosaicDesc: 'One big picture built from hundreds of your photos', collage: 'Collage', collageDesc: 'Grid layouts with spacing and corners',
+  settingsDesc: 'Name, language, backup', nLibs: '{n} libraries', nItems: '{n} saved', nPhotos: '{n} photos',
+  scr_home: 'Home', scr_mosaic: 'Photo mosaic', scr_collage: 'Collage', scr_libs: 'Tile libraries', scr_lib: 'Library', scr_gallery: 'My creations', scr_view: 'Creation',
+  scr_settings: 'Settings', scr_about: 'About', scr_guide: 'Guide', scr_diag: 'Diagnostics',
+  chooseTheme: 'Theme', dayMode: 'Day mode', toDay: 'Switch to day mode', toNight: 'Switch to night mode', language: 'Language', look: 'Look',
+  th_gold: 'Black & gold', th_sapphire: 'Sapphire', th_emerald: 'Emerald', th_ruby: 'Ruby', th_amethyst: 'Amethyst',
+  fileWarn: 'Opened as a local file (file://). Offline mode and installing won\'t work this way — open the app from its web address.',
+  memWarn: 'This browser blocks storage (private mode?). You can work, but libraries and creations will be lost when you close the app.',
+  // mosaic setup
+  resumeMosaic: 'Continue editing the last mosaic', mainPhoto: 'Main photo', pickMain: 'Choose the main photo', pickMainHint: 'The big picture your mosaic will show',
+  mainChosen: 'Main photo', tapToChange: 'Tap to change', useSample: 'Use a sample photo', sampleName: 'Sunset (sample)',
+  tileLib: 'Tile library', noLibsYet: 'No libraries yet. Add photos from a trip, an event or your whole gallery — the more, the better.',
+  addToThisLib: 'Add photos to this library', newLibPhotos: 'Add photos', newLib: 'New library', addFolder: 'Add a folder', demoTiles: 'Sample tiles',
+  fewTiles: 'Only {n} photos. It will work, but the same photos will repeat a lot. 150+ photos give a much richer mosaic.',
+  mosaicSettings: 'Settings', tilesAcross: 'Tiles across', gridInfo: '{c} × {r} = {n} tiles', gridNeedsMain: 'Choose a main photo to see the grid size',
+  tileShape: 'Tile shape', asp_1_1: 'Square', asp_4_3: 'Landscape 4:3', asp_3_4: 'Portrait 3:4',
+  variety: 'Variety', var_low: 'Best colour', var_med: 'Balanced', var_high: 'Most variety',
+  varietyHint: 'More variety = fewer repeats of the same photo next to each other; slightly less exact colours.',
+  allowFlip: 'Allow mirrored tiles', allowFlipHint: 'Doubles the choices — mirrored photos fit shapes better',
+  makeMosaic: 'Create mosaic', needMain: 'Choose a main photo first', needLib: 'Choose a tile library with photos',
+  creating: 'Creating your mosaic', analyzing: 'Analysing colours…', matching: 'Matching tiles… {p}%', drawing: 'Drawing…', loadingTiles: 'Loading tiles {n}/{t}',
+  mosaicFail: 'Could not create the mosaic. Try fewer tiles across.', reshuffled: 'New arrangement ready', loadingPhoto: 'Loading photo…', decodeFail: 'This image could not be opened',
+  heicFail: '{n} HEIC photo(s) could not be opened. Convert to JPG or set the camera to "Most compatible".',
+  // libraries
+  libsIntro: 'A library is a set of small photos that become the tiles of the mosaic. Keep one per trip, family, event…',
+  libDefaultName: 'Library {d}', editLib: 'Edit library', deleteLib: 'Delete library', deleteLibQ: 'Delete "{name}" and all its photos from the app? (Your original photos are not touched.)',
+  importing: 'Adding photos', importedN: '{n} of {t}', importDone: '{n} photos added', dupSkipped: '{n} duplicates skipped', failedN: '{n} failed',
+  noImages: 'No images were selected', storageFull: 'Device storage is full — free some space or remove a library',
+  makingDemo: 'Creating sample tiles…', demoLib: 'Sample tiles', demoReady: 'Sample tiles are ready',
+  addPhotos: 'Add photos', selectToRemove: 'Select to remove', doneSelecting: 'Done', selectedN: '{n} selected', removeQ: 'Remove {n} photos from this library?',
+  useForMosaic: 'Use for a mosaic', libTip: 'Small copies are kept in the app (about 20 KB each). Your originals stay where they are.',
+  libEmpty: 'This library is empty. Add photos to start.', showAllN: 'Show all {n}',
+  // editor
+  mosaic: 'Mosaic', mosaicCanvas: 'Mosaic preview — pinch to zoom, tap a tile to replace it', undo: 'Undo', redo: 'Redo',
+  zoomIn: 'Zoom in', zoomOut: 'Zoom out', zoomFit: 'Fit to screen', style: 'Style', exportSave: 'Export / save', reshuffle: 'Shuffle', changeSetup: 'Settings',
+  edHint: '{n} tiles · pinch to zoom · tap a tile to swap it',
+  tint: 'Colour tint', tintHint: '0% = a pure mosaic, no tricks', overlay: 'Main photo overlay', overlayHint: 'Sharpens the big picture, less "real"',
+  grout: 'Gaps between tiles', groutColor: 'Gap colour', customColor: 'Custom colour', shape: 'Shape', sh_square: 'Square', sh_rounded: 'Rounded', sh_circle: 'Circles',
+  swapTitle: 'Replace this tile', swapHint: 'Best matches first. The current photo is used {u} times.', showMore: 'Show more', flipThis: 'Mirror', useThis: 'Use this photo',
+  // export
+  exportTitle: 'Export', size: 'Size', format: 'Format', fmtHint: 'JPG = smaller file · PNG = no compression (large)',
+  phoneLimit: 'On phones the size is capped to protect memory. 8K works best on a computer.',
+  addSignature: 'Add my name in the corner', download: 'Download', share: 'Share', saveGallery: 'Save to my creations',
+  rendering: 'Rendering in full quality', renderingN: 'Photo {n} of {t}', encoding: 'Encoding the file…', saving: 'Saving…',
+  savedGallery: 'Saved to "My creations"', downloaded: 'Downloaded · {w}×{h}', exportRetry: 'Too big for this device — trying a smaller size', exportFail: 'Export failed. Try a smaller size.',
+  shareMade: 'Made with CollageNest', shareMadeBy: '{name} made this with CollageNest', shareFallback: 'Sharing isn\'t available — the file was downloaded',
+  // collage
+  resumeCollage: 'Continue the last collage', collageIntro: 'Pick up to {n} photos, choose a layout, drag to frame each photo.',
+  pickPhotos: 'Choose photos', pickPhotosHint: 'Up to {n} photos', templates: 'Layouts', loadingPhotos: 'Loading photos',
+  collageMax: 'Up to {n} photos per collage', collageCanvas: 'Collage preview — tap a cell to select it', collageHint: 'Tap a photo to select it',
+  cellHint: 'Drag to frame · pinch or slider to zoom', swapPick: 'Tap the cell to swap with', zoom: 'Zoom', replace: 'Replace', swapWith: 'Swap with…',
+  resetCell: 'Reset', removePhoto: 'Remove', template: 'Layout', ratio: 'Ratio', spacing: 'Spacing', corners: 'Corners', background: 'Background',
+  tplN: 'Layout for {n} photos', collageEmpty: 'Add at least one photo',
+  // gallery
+  galEmpty: 'Nothing saved yet. Create a mosaic or a collage and tap "Save to my creations".',
+  galNote: 'Saved on this device only. Download important ones — they are not part of the JSON backup.', editItem: 'Edit creation', deleteItemQ: 'Delete this creation?',
+  // settings
+  profile: 'Profile', userName: 'User name', userNamePh: 'Name / nickname / family', userNameHint: 'Appears when you share and in the optional signature.',
+  exportDefaults: 'Export defaults', signHint: 'Uses your user name', signNeedsName: 'Add a user name first',
+  dataBackup: 'Data & backup', storage: 'Storage', used: 'Used', persistYes: 'Protected (persistent)', persistNo: 'Not protected — the browser may clear it when space runs low',
+  backupNote: 'Settings backup = small file. Full backup also includes all libraries (can be large). Saved creations are not included — download them from the gallery.',
+  backupSettings: 'Backup settings', backupFull: 'Full backup', restore: 'Restore', backingUp: 'Preparing backup…', backupDone: 'Backup saved ({s})',
+  restoreBad: 'This is not a CollageNest backup file', restoreFullQ: 'Restoring replaces your settings and ALL libraries with the backup. Continue?', restoreSetQ: 'Restore settings from this file?',
+  restoring: 'Restoring…', restored: 'Restored', help: 'Help', replayIntro: 'Show the intro again', dangerZone: 'Danger zone', deleteAll: 'Delete all data',
+  deleteAllQ1: 'This deletes all libraries, creations and settings from this device.', deleteAllQ2: 'Last check: delete everything? This cannot be undone.', allDeleted: 'Everything was deleted',
+  // guide
+  g1t: 'Welcome to CollageNest', g1: 'Make photo mosaics and collages like the classic PC programs — right in your browser. Nothing is uploaded anywhere.',
+  g2t: 'A photo mosaic', g2: 'Pick one main photo. CollageNest rebuilds it from hundreds of small photos, matching each spot by colour and shape.',
+  g3t: 'Tile libraries', g3: 'Add a folder of photos (a trip, an event, the family). They are saved in the app, so next time you just pick the library.',
+  g4t: 'Zoom & swap', g4: 'Pinch to zoom until you see every photo. Tap a tile to see the best alternatives and swap it. Undo is always there.',
+  g5t: 'Collages', g5: 'Choose up to 16 photos, a layout, spacing and corners. Drag inside a cell to frame the photo.',
+  g6t: 'Private by design', g6: 'All processing runs on your device. Install the app from the browser menu to use it offline.',
+  tipsTitle: 'Tips for great mosaics', tip1: 'Use 150–1,000 tile photos with many different colours.', tip2: 'A main photo with a clear subject and strong contrast works best (faces, sunsets, pets).',
+  tip3: '40–80 tiles across is a sweet spot. More tiles = more detail but smaller photos.', tip4: 'Tint 10–25% helps the big picture without hiding the small photos.',
+  tip5: 'Want each photo visible? Use fewer tiles across and export in 4K or 8K.', tip6: 'For printing, export PNG in the largest size on a computer.',
+  // about
+  version: 'Version', developer: 'Developer', platform: 'Platform', onDeviceOnly: 'On this device only', license: 'License',
+  storeLink: 'AppNest store', shareApp: 'Share the app', shareAppText: 'CollageNest — make photo mosaics and collages on your phone', linkCopied: 'Link copied',
+  feedback: 'Send feedback', privacy: 'Privacy policy',
+  disclaimer: 'Your photos are processed on your device only and are never uploaded. Use only photos you have the right to use. Results depend on the photos you choose.',
+  diagIntro: 'A technical report for support. It contains no photos and no personal content.', sendReport: 'Email report', clearErrors: 'Clear errors', askPersist: 'Protect storage'
+};
+
+LANG.he = {
+  langName: 'עברית', skip: 'דלג לתוכן', home: 'בית', back: 'חזרה', ok: 'אישור', cancel: 'ביטול', cancelling: 'עוצר…', cancelled: 'בוטל', close: 'סגור',
+  save: 'שמור', create: 'צור', delete: 'מחק', deleted: 'נמחק', edit: 'עריכה', remove: 'הסר', done: 'סיום', next: 'הבא', prev: 'הקודם', start: 'בוא נתחיל', continue: 'המשך',
+  areYouSure: 'בטוח?', name: 'שם', photo: 'תמונה', photos: 'תמונות', copy: 'העתק', copied: 'הועתק', copyFail: 'לא הצלחתי להעתיק', unknown: 'לא ידוע',
+  saveFail: 'השמירה נכשלה — האחסון חסום או מלא', screenFail: 'משהו השתבש במסך הזה. נסה שוב.',
+  tagline: 'פסיפס תמונות וקולאז׳ — נוצרים על המכשיר שלך', hello: 'היי {name} 👋',
+  mosaicTitle: 'פסיפס תמונות', mosaicDesc: 'תמונה אחת גדולה שבנויה ממאות התמונות שלך', collage: 'קולאז׳', collageDesc: 'תבניות רשת עם מרווחים ופינות',
+  settingsDesc: 'שם, שפה, גיבוי', nLibs: '{n} ספריות', nItems: '{n} שמורות', nPhotos: '{n} תמונות',
+  scr_home: 'בית', scr_mosaic: 'פסיפס תמונות', scr_collage: 'קולאז׳', scr_libs: 'ספריות אריחים', scr_lib: 'ספרייה', scr_gallery: 'היצירות שלי', scr_view: 'יצירה',
+  scr_settings: 'הגדרות', scr_about: 'אודות', scr_guide: 'מדריך', scr_diag: 'אבחון',
+  chooseTheme: 'ערכת צבע', dayMode: 'מצב יום', toDay: 'עבור למצב יום', toNight: 'עבור למצב לילה', language: 'שפה', look: 'מראה',
+  th_gold: 'שחור-זהב', th_sapphire: 'ספיר', th_emerald: 'אזמרגד', th_ruby: 'אודם', th_amethyst: 'אמתיסט',
+  fileWarn: 'האפליקציה נפתחה כקובץ מקומי (file://). ככה מצב אופליין והתקנה לא יעבדו — פתח אותה מהכתובת שלה ברשת.',
+  memWarn: 'הדפדפן חוסם אחסון (גלישה בסתר?). אפשר לעבוד, אבל הספריות והיצירות יימחקו כשתסגור את האפליקציה.',
+  resumeMosaic: 'המשך לערוך את הפסיפס האחרון', mainPhoto: 'תמונה ראשית', pickMain: 'בחר את התמונה הראשית', pickMainHint: 'התמונה הגדולה שהפסיפס יציג',
+  mainChosen: 'תמונה ראשית', tapToChange: 'הקש להחלפה', useSample: 'השתמש בתמונת דוגמה', sampleName: 'שקיעה (דוגמה)',
+  tileLib: 'ספריית אריחים', noLibsYet: 'אין עדיין ספריות. הוסף תמונות מטיול, מאירוע או מכל הגלריה — כמה שיותר, יותר טוב.',
+  addToThisLib: 'הוסף תמונות לספרייה הזו', newLibPhotos: 'הוסף תמונות', newLib: 'ספרייה חדשה', addFolder: 'הוסף תיקייה', demoTiles: 'אריחי דוגמה',
+  fewTiles: 'רק {n} תמונות. זה יעבוד, אבל אותן תמונות יחזרו הרבה. 150 תמונות ומעלה נותנות פסיפס עשיר בהרבה.',
+  mosaicSettings: 'הגדרות', tilesAcross: 'אריחים לרוחב', gridInfo: '{c} × {r} = {n} אריחים', gridNeedsMain: 'בחר תמונה ראשית כדי לראות את גודל הרשת',
+  tileShape: 'צורת אריח', asp_1_1: 'ריבוע', asp_4_3: 'לרוחב 4:3', asp_3_4: 'לאורך 3:4',
+  variety: 'גיוון', var_low: 'צבע מדויק', var_med: 'מאוזן', var_high: 'הכי מגוון',
+  varietyHint: 'יותר גיוון = פחות חזרות של אותה תמונה אחת ליד השנייה; הצבעים קצת פחות מדויקים.',
+  allowFlip: 'אפשר אריחים במראה', allowFlipHint: 'מכפיל את האפשרויות — תמונה הפוכה מתאימה לפעמים טוב יותר',
+  makeMosaic: 'צור פסיפס', needMain: 'בחר קודם תמונה ראשית', needLib: 'בחר ספריית אריחים עם תמונות',
+  creating: 'יוצר את הפסיפס שלך', analyzing: 'מנתח צבעים…', matching: 'מתאים אריחים… {p}%', drawing: 'מצייר…', loadingTiles: 'טוען אריחים {n}/{t}',
+  mosaicFail: 'לא הצלחתי ליצור את הפסיפס. נסה פחות אריחים לרוחב.', reshuffled: 'סידור חדש מוכן', loadingPhoto: 'טוען תמונה…', decodeFail: 'לא הצלחתי לפתוח את התמונה הזו',
+  heicFail: '{n} תמונות HEIC לא נפתחו. המר ל-JPG או הגדר במצלמה "תואם ביותר".',
+  libsIntro: 'ספרייה היא אוסף תמונות קטנות שהופכות לאריחים של הפסיפס. אפשר ספרייה לכל טיול, משפחה, אירוע…',
+  libDefaultName: 'ספרייה {d}', editLib: 'עריכת ספרייה', deleteLib: 'מחק ספרייה', deleteLibQ: 'למחוק את "{name}" ואת כל התמונות שלה מהאפליקציה? (התמונות המקוריות שלך לא נפגעות.)',
+  importing: 'מוסיף תמונות', importedN: '{n} מתוך {t}', importDone: 'נוספו {n} תמונות', dupSkipped: '{n} כפולות דולגו', failedN: '{n} נכשלו',
+  noImages: 'לא נבחרו תמונות', storageFull: 'האחסון במכשיר מלא — פנה מקום או מחק ספרייה',
+  makingDemo: 'יוצר אריחי דוגמה…', demoLib: 'אריחי דוגמה', demoReady: 'אריחי הדוגמה מוכנים',
+  addPhotos: 'הוסף תמונות', selectToRemove: 'בחר להסרה', doneSelecting: 'סיום', selectedN: 'נבחרו {n}', removeQ: 'להסיר {n} תמונות מהספרייה?',
+  useForMosaic: 'השתמש לפסיפס', libTip: 'באפליקציה נשמרים עותקים קטנים (בערך 20KB לתמונה). התמונות המקוריות נשארות במקומן.',
+  libEmpty: 'הספרייה ריקה. הוסף תמונות כדי להתחיל.', showAllN: 'הצג את כל ה-{n}',
+  mosaic: 'פסיפס', mosaicCanvas: 'תצוגת הפסיפס — צביטה להגדלה, הקשה על אריח להחלפה', undo: 'בטל', redo: 'בצע שוב',
+  zoomIn: 'הגדל', zoomOut: 'הקטן', zoomFit: 'התאם למסך', style: 'סגנון', exportSave: 'ייצוא / שמירה', reshuffle: 'ערבב', changeSetup: 'הגדרות',
+  edHint: '{n} אריחים · צבוט להגדלה · הקש על אריח להחלפה',
+  tint: 'גוון צבע', tintHint: '0% = פסיפס טהור, בלי טריקים', overlay: 'שכבת התמונה הראשית', overlayHint: 'מחדד את התמונה הגדולה, פחות "אמיתי"',
+  grout: 'מרווח בין אריחים', groutColor: 'צבע המרווח', customColor: 'צבע אחר', shape: 'צורה', sh_square: 'ריבוע', sh_rounded: 'מעוגל', sh_circle: 'עיגולים',
+  swapTitle: 'החלף את האריח', swapHint: 'ההתאמות הטובות ביותר ראשונות. התמונה הנוכחית מופיעה {u} פעמים.', showMore: 'הצג עוד', flipThis: 'במראה', useThis: 'השתמש בתמונה הזו',
+  exportTitle: 'ייצוא', size: 'גודל', format: 'פורמט', fmtHint: 'JPG = קובץ קטן · PNG = בלי דחיסה (גדול)',
+  phoneLimit: 'בטלפון הגודל מוגבל כדי לשמור על הזיכרון. 8K עובד הכי טוב במחשב.',
+  addSignature: 'הוסף את השם שלי בפינה', download: 'הורד', share: 'שתף', saveGallery: 'שמור ביצירות שלי',
+  rendering: 'מייצר באיכות מלאה', renderingN: 'תמונה {n} מתוך {t}', encoding: 'שומר את הקובץ…', saving: 'שומר…',
+  savedGallery: 'נשמר ב"היצירות שלי"', downloaded: 'הורד · {w}×{h}', exportRetry: 'גדול מדי למכשיר — מנסה גודל קטן יותר', exportFail: 'הייצוא נכשל. נסה גודל קטן יותר.',
+  shareMade: 'נוצר ב-CollageNest', shareMadeBy: '{name} יצר/ה את זה ב-CollageNest', shareFallback: 'שיתוף לא זמין — הקובץ הורד',
+  resumeCollage: 'המשך את הקולאז׳ האחרון', collageIntro: 'בחר עד {n} תמונות, בחר תבנית, וגרור כדי למסגר כל תמונה.',
+  pickPhotos: 'בחר תמונות', pickPhotosHint: 'עד {n} תמונות', templates: 'תבניות', loadingPhotos: 'טוען תמונות',
+  collageMax: 'עד {n} תמונות בקולאז׳', collageCanvas: 'תצוגת הקולאז׳ — הקש על תא כדי לבחור', collageHint: 'הקש על תמונה כדי לבחור אותה',
+  cellHint: 'גרור למסגור · צביטה או סרגל להגדלה', swapPick: 'הקש על התא להחלפה', zoom: 'הגדלה', replace: 'החלף', swapWith: 'החלף מקום עם…',
+  resetCell: 'איפוס', removePhoto: 'הסר', template: 'תבנית', ratio: 'יחס', spacing: 'מרווח', corners: 'פינות', background: 'רקע',
+  tplN: 'תבנית ל-{n} תמונות', collageEmpty: 'הוסף לפחות תמונה אחת',
+  galEmpty: 'עוד לא נשמר כלום. צור פסיפס או קולאז׳ והקש "שמור ביצירות שלי".',
+  galNote: 'נשמר על המכשיר הזה בלבד. הורד את החשובות — הן לא נכללות בגיבוי ה-JSON.', editItem: 'עריכת יצירה', deleteItemQ: 'למחוק את היצירה הזו?',
+  profile: 'פרופיל', userName: 'שם משתמש', userNamePh: 'שם / כינוי / משפחה', userNameHint: 'מופיע בשיתוף ובחתימה (אם תבחר).',
+  exportDefaults: 'ברירות מחדל לייצוא', signHint: 'משתמש בשם המשתמש שלך', signNeedsName: 'הוסף קודם שם משתמש',
+  dataBackup: 'נתונים וגיבוי', storage: 'אחסון', used: 'בשימוש', persistYes: 'מוגן (קבוע)', persistNo: 'לא מוגן — הדפדפן עלול למחוק כשנגמר מקום',
+  backupNote: 'גיבוי הגדרות = קובץ קטן. גיבוי מלא כולל גם את כל הספריות (יכול להיות גדול). היצירות השמורות לא נכללות — הורד אותן מהגלריה.',
+  backupSettings: 'גיבוי הגדרות', backupFull: 'גיבוי מלא', restore: 'שחזור', backingUp: 'מכין גיבוי…', backupDone: 'הגיבוי נשמר ({s})',
+  restoreBad: 'זה לא קובץ גיבוי של CollageNest', restoreFullQ: 'השחזור יחליף את ההגדרות ואת כל הספריות בגיבוי. להמשיך?', restoreSetQ: 'לשחזר הגדרות מהקובץ?',
+  restoring: 'משחזר…', restored: 'שוחזר', help: 'עזרה', replayIntro: 'הצג שוב את ההדרכה', dangerZone: 'אזור מסוכן', deleteAll: 'מחק את כל הנתונים',
+  deleteAllQ1: 'זה מוחק את כל הספריות, היצירות וההגדרות מהמכשיר הזה.', deleteAllQ2: 'בדיקה אחרונה: למחוק הכול? אי אפשר לבטל.', allDeleted: 'הכול נמחק',
+  g1t: 'ברוך הבא ל-CollageNest', g1: 'פסיפס תמונות וקולאז׳ כמו בתוכנות הקלאסיות — ישר בדפדפן. שום דבר לא עולה לשום מקום.',
+  g2t: 'פסיפס תמונות', g2: 'בוחרים תמונה ראשית אחת. CollageNest בונה אותה מחדש ממאות תמונות קטנות, ומתאים כל נקודה לפי צבע וצורה.',
+  g3t: 'ספריות אריחים', g3: 'מוסיפים תיקיית תמונות (טיול, אירוע, משפחה). הן נשמרות באפליקציה, ובפעם הבאה רק בוחרים את הספרייה.',
+  g4t: 'הגדלה והחלפה', g4: 'צובטים להגדלה עד שרואים כל תמונה. הקשה על אריח מציגה את החלופות הכי טובות. תמיד אפשר לבטל.',
+  g5t: 'קולאז׳', g5: 'בוחרים עד 16 תמונות, תבנית, מרווחים ופינות. גוררים בתוך תא כדי למסגר את התמונה.',
+  g6t: 'פרטי מהיסוד', g6: 'כל העיבוד רץ על המכשיר שלך. התקן את האפליקציה מתפריט הדפדפן כדי להשתמש בה גם בלי אינטרנט.',
+  tipsTitle: 'טיפים לפסיפס מושלם', tip1: 'השתמש ב-150 עד 1,000 תמונות אריח, עם הרבה צבעים שונים.', tip2: 'תמונה ראשית עם נושא ברור וניגודיות חזקה עובדת הכי טוב (פנים, שקיעות, חיות).',
+  tip3: '40–80 אריחים לרוחב זה האיזון הטוב. יותר אריחים = יותר פרטים אבל תמונות קטנות יותר.', tip4: 'גוון של 10–25% עוזר לתמונה הגדולה בלי להסתיר את הקטנות.',
+  tip5: 'רוצה לראות כל תמונה? פחות אריחים לרוחב וייצוא ב-4K או 8K.', tip6: 'להדפסה — ייצא PNG בגודל הכי גדול, במחשב.',
+  version: 'גרסה', developer: 'פיתוח', platform: 'פלטפורמה', onDeviceOnly: 'על המכשיר בלבד', license: 'רישיון',
+  storeLink: 'חנות AppNest', shareApp: 'שתף את האפליקציה', shareAppText: 'CollageNest — פסיפס תמונות וקולאז׳ בטלפון', linkCopied: 'הקישור הועתק',
+  feedback: 'שלח משוב', privacy: 'מדיניות פרטיות',
+  disclaimer: 'התמונות שלך מעובדות על המכשיר בלבד ולא עולות לשום שרת. השתמש רק בתמונות שמותר לך להשתמש בהן. התוצאה תלויה בתמונות שבחרת.',
+  diagIntro: 'דוח טכני לתמיכה. אין בו תמונות ואין בו תוכן אישי.', sendReport: 'שלח דוח במייל', clearErrors: 'נקה שגיאות', askPersist: 'הגן על האחסון'
+};
+
+LANG.ru = {
+  langName: 'Русский', skip: 'Перейти к содержимому', home: 'Главная', back: 'Назад', ok: 'ОК', cancel: 'Отмена', cancelling: 'Останавливаю…', cancelled: 'Отменено', close: 'Закрыть',
+  save: 'Сохранить', create: 'Создать', delete: 'Удалить', deleted: 'Удалено', edit: 'Изменить', remove: 'Убрать', done: 'Готово', next: 'Далее', prev: 'Назад', start: 'Начнём', continue: 'Продолжить',
+  areYouSure: 'Вы уверены?', name: 'Название', photo: 'Фото', photos: 'Фото', copy: 'Копировать', copied: 'Скопировано', copyFail: 'Не удалось скопировать', unknown: 'Неизвестно',
+  saveFail: 'Не удалось сохранить — хранилище заблокировано или заполнено', screenFail: 'На этом экране что-то пошло не так. Попробуйте ещё раз.',
+  tagline: 'Фотомозаики и коллажи — прямо на вашем устройстве', hello: 'Привет, {name} 👋',
+  mosaicTitle: 'Фотомозаика', mosaicDesc: 'Одна большая картина из сотен ваших фото', collage: 'Коллаж', collageDesc: 'Сетки с отступами и скруглением',
+  settingsDesc: 'Имя, язык, резервная копия', nLibs: 'Библиотек: {n}', nItems: 'Сохранено: {n}', nPhotos: 'Фото: {n}',
+  scr_home: 'Главная', scr_mosaic: 'Фотомозаика', scr_collage: 'Коллаж', scr_libs: 'Библиотеки плиток', scr_lib: 'Библиотека', scr_gallery: 'Мои работы', scr_view: 'Работа',
+  scr_settings: 'Настройки', scr_about: 'О приложении', scr_guide: 'Руководство', scr_diag: 'Диагностика',
+  chooseTheme: 'Тема', dayMode: 'Дневной режим', toDay: 'Включить дневной режим', toNight: 'Включить ночной режим', language: 'Язык', look: 'Оформление',
+  th_gold: 'Чёрное золото', th_sapphire: 'Сапфир', th_emerald: 'Изумруд', th_ruby: 'Рубин', th_amethyst: 'Аметист',
+  fileWarn: 'Приложение открыто как локальный файл (file://). Так не работают офлайн-режим и установка — откройте его по веб-адресу.',
+  memWarn: 'Браузер блокирует хранилище (режим инкогнито?). Работать можно, но библиотеки и работы пропадут после закрытия.',
+  resumeMosaic: 'Продолжить последнюю мозаику', mainPhoto: 'Основное фото', pickMain: 'Выберите основное фото', pickMainHint: 'Большая картина, которую покажет мозаика',
+  mainChosen: 'Основное фото', tapToChange: 'Нажмите, чтобы заменить', useSample: 'Взять пример', sampleName: 'Закат (пример)',
+  tileLib: 'Библиотека плиток', noLibsYet: 'Библиотек пока нет. Добавьте фото из поездки, с праздника или всю галерею — чем больше, тем лучше.',
+  addToThisLib: 'Добавить фото в эту библиотеку', newLibPhotos: 'Добавить фото', newLib: 'Новая библиотека', addFolder: 'Добавить папку', demoTiles: 'Пример плиток',
+  fewTiles: 'Всего {n} фото. Получится, но одни и те же фото будут часто повторяться. От 150 фото мозаика намного богаче.',
+  mosaicSettings: 'Настройки', tilesAcross: 'Плиток по ширине', gridInfo: '{c} × {r} = {n} плиток', gridNeedsMain: 'Выберите основное фото, чтобы увидеть размер сетки',
+  tileShape: 'Форма плитки', asp_1_1: 'Квадрат', asp_4_3: 'Альбомная 4:3', asp_3_4: 'Портретная 3:4',
+  variety: 'Разнообразие', var_low: 'Точный цвет', var_med: 'Баланс', var_high: 'Максимум',
+  varietyHint: 'Больше разнообразия = меньше повторов одного фото рядом; цвета чуть менее точные.',
+  allowFlip: 'Разрешить зеркальные плитки', allowFlipHint: 'Вдвое больше вариантов — зеркальное фото иногда подходит лучше',
+  makeMosaic: 'Создать мозаику', needMain: 'Сначала выберите основное фото', needLib: 'Выберите библиотеку с фото',
+  creating: 'Создаю вашу мозаику', analyzing: 'Анализ цветов…', matching: 'Подбор плиток… {p}%', drawing: 'Рисую…', loadingTiles: 'Загрузка плиток {n}/{t}',
+  mosaicFail: 'Не удалось создать мозаику. Уменьшите число плиток по ширине.', reshuffled: 'Новая раскладка готова', loadingPhoto: 'Загрузка фото…', decodeFail: 'Не удалось открыть это изображение',
+  heicFail: 'Не удалось открыть HEIC-фото: {n}. Конвертируйте в JPG или включите в камере «Наиболее совместимый».',
+  libsIntro: 'Библиотека — это набор маленьких фото, которые становятся плитками мозаики. Можно завести по одной на поездку, семью, событие…',
+  libDefaultName: 'Библиотека {d}', editLib: 'Изменить библиотеку', deleteLib: 'Удалить библиотеку', deleteLibQ: 'Удалить «{name}» и все её фото из приложения? (Ваши оригиналы не затрагиваются.)',
+  importing: 'Добавляю фото', importedN: '{n} из {t}', importDone: 'Добавлено фото: {n}', dupSkipped: 'пропущено дублей: {n}', failedN: 'ошибок: {n}',
+  noImages: 'Изображения не выбраны', storageFull: 'Память устройства заполнена — освободите место или удалите библиотеку',
+  makingDemo: 'Создаю примеры плиток…', demoLib: 'Пример плиток', demoReady: 'Примеры плиток готовы',
+  addPhotos: 'Добавить фото', selectToRemove: 'Выбрать для удаления', doneSelecting: 'Готово', selectedN: 'Выбрано: {n}', removeQ: 'Убрать {n} фото из библиотеки?',
+  useForMosaic: 'Использовать для мозаики', libTip: 'В приложении хранятся маленькие копии (около 20 КБ). Оригиналы остаются на месте.',
+  libEmpty: 'Библиотека пуста. Добавьте фото, чтобы начать.', showAllN: 'Показать все {n}',
+  mosaic: 'Мозаика', mosaicCanvas: 'Просмотр мозаики — щипок для масштаба, нажатие на плитку для замены', undo: 'Отменить', redo: 'Повторить',
+  zoomIn: 'Увеличить', zoomOut: 'Уменьшить', zoomFit: 'По размеру экрана', style: 'Стиль', exportSave: 'Экспорт / сохранить', reshuffle: 'Перемешать', changeSetup: 'Настройки',
+  edHint: '{n} плиток · щипок для масштаба · нажмите на плитку, чтобы заменить',
+  tint: 'Подкраска', tintHint: '0% = чистая мозаика без хитростей', overlay: 'Наложение основного фото', overlayHint: 'Чётче большая картина, но менее «честно»',
+  grout: 'Зазоры между плитками', groutColor: 'Цвет зазора', customColor: 'Свой цвет', shape: 'Форма', sh_square: 'Квадрат', sh_rounded: 'Скруглённые', sh_circle: 'Круги',
+  swapTitle: 'Заменить плитку', swapHint: 'Лучшие совпадения сначала. Текущее фото использовано {u} раз.', showMore: 'Показать ещё', flipThis: 'Отразить', useThis: 'Использовать это фото',
+  exportTitle: 'Экспорт', size: 'Размер', format: 'Формат', fmtHint: 'JPG = меньший файл · PNG = без сжатия (большой)',
+  phoneLimit: 'На телефоне размер ограничен ради памяти. 8K лучше делать на компьютере.',
+  addSignature: 'Добавить моё имя в углу', download: 'Скачать', share: 'Поделиться', saveGallery: 'Сохранить в мои работы',
+  rendering: 'Рендер в полном качестве', renderingN: 'Фото {n} из {t}', encoding: 'Сохраняю файл…', saving: 'Сохраняю…',
+  savedGallery: 'Сохранено в «Мои работы»', downloaded: 'Скачано · {w}×{h}', exportRetry: 'Слишком большой размер для устройства — пробую меньше', exportFail: 'Экспорт не удался. Попробуйте меньший размер.',
+  shareMade: 'Сделано в CollageNest', shareMadeBy: '{name} сделал(а) это в CollageNest', shareFallback: 'Поделиться нельзя — файл скачан',
+  resumeCollage: 'Продолжить последний коллаж', collageIntro: 'Выберите до {n} фото и шаблон, перетаскивайте, чтобы выбрать кадр.',
+  pickPhotos: 'Выбрать фото', pickPhotosHint: 'До {n} фото', templates: 'Шаблоны', loadingPhotos: 'Загрузка фото',
+  collageMax: 'Не больше {n} фото в коллаже', collageCanvas: 'Просмотр коллажа — нажмите на ячейку, чтобы выбрать', collageHint: 'Нажмите на фото, чтобы выбрать его',
+  cellHint: 'Перетащите для кадра · щипок или ползунок для масштаба', swapPick: 'Нажмите на ячейку для обмена', zoom: 'Масштаб', replace: 'Заменить', swapWith: 'Поменять с…',
+  resetCell: 'Сбросить', removePhoto: 'Убрать', template: 'Шаблон', ratio: 'Пропорции', spacing: 'Отступы', corners: 'Углы', background: 'Фон',
+  tplN: 'Шаблон на {n} фото', collageEmpty: 'Добавьте хотя бы одно фото',
+  galEmpty: 'Пока ничего не сохранено. Создайте мозаику или коллаж и нажмите «Сохранить в мои работы».',
+  galNote: 'Хранится только на этом устройстве. Скачайте важные — они не входят в JSON-копию.', editItem: 'Изменить работу', deleteItemQ: 'Удалить эту работу?',
+  profile: 'Профиль', userName: 'Имя пользователя', userNamePh: 'Имя / ник / семья', userNameHint: 'Показывается при отправке и в подписи (по желанию).',
+  exportDefaults: 'Экспорт по умолчанию', signHint: 'Используется имя пользователя', signNeedsName: 'Сначала укажите имя пользователя',
+  dataBackup: 'Данные и копии', storage: 'Хранилище', used: 'Занято', persistYes: 'Защищено (постоянное)', persistNo: 'Не защищено — браузер может очистить при нехватке места',
+  backupNote: 'Копия настроек = маленький файл. Полная копия включает и все библиотеки (может быть большой). Сохранённые работы не входят — скачайте их из галереи.',
+  backupSettings: 'Копия настроек', backupFull: 'Полная копия', restore: 'Восстановить', backingUp: 'Готовлю копию…', backupDone: 'Копия сохранена ({s})',
+  restoreBad: 'Это не файл копии CollageNest', restoreFullQ: 'Восстановление заменит настройки и ВСЕ библиотеки. Продолжить?', restoreSetQ: 'Восстановить настройки из файла?',
+  restoring: 'Восстанавливаю…', restored: 'Восстановлено', help: 'Помощь', replayIntro: 'Показать вступление снова', dangerZone: 'Опасная зона', deleteAll: 'Удалить все данные',
+  deleteAllQ1: 'Будут удалены все библиотеки, работы и настройки на этом устройстве.', deleteAllQ2: 'Последняя проверка: удалить всё? Это нельзя отменить.', allDeleted: 'Всё удалено',
+  g1t: 'Добро пожаловать в CollageNest', g1: 'Фотомозаики и коллажи, как в классических программах, — прямо в браузере. Ничего никуда не загружается.',
+  g2t: 'Фотомозаика', g2: 'Выберите одно основное фото. CollageNest соберёт его из сотен маленьких, подбирая каждое место по цвету и форме.',
+  g3t: 'Библиотеки плиток', g3: 'Добавьте папку фото (поездка, праздник, семья). Они сохраняются в приложении — в следующий раз просто выберите библиотеку.',
+  g4t: 'Масштаб и замена', g4: 'Увеличивайте щипком, пока не увидите каждое фото. Нажмите на плитку — появятся лучшие замены. Отмена всегда под рукой.',
+  g5t: 'Коллажи', g5: 'До 16 фото, шаблон, отступы и углы. Перетаскивайте внутри ячейки, чтобы выбрать кадр.',
+  g6t: 'Приватно по умолчанию', g6: 'Вся обработка идёт на вашем устройстве. Установите приложение через меню браузера, чтобы работать офлайн.',
+  tipsTitle: 'Советы для отличной мозаики', tip1: 'Берите 150–1000 фото для плиток с разными цветами.', tip2: 'Лучше всего работает основное фото с ясным сюжетом и контрастом (лица, закаты, питомцы).',
+  tip3: '40–80 плиток по ширине — золотая середина. Больше плиток = больше деталей, но мельче фото.', tip4: 'Подкраска 10–25% помогает картине и не скрывает маленькие фото.',
+  tip5: 'Хотите видеть каждое фото? Меньше плиток по ширине и экспорт в 4K или 8K.', tip6: 'Для печати экспортируйте PNG максимального размера на компьютере.',
+  version: 'Версия', developer: 'Разработчик', platform: 'Платформа', onDeviceOnly: 'Только на этом устройстве', license: 'Лицензия',
+  storeLink: 'Магазин AppNest', shareApp: 'Поделиться приложением', shareAppText: 'CollageNest — фотомозаики и коллажи на телефоне', linkCopied: 'Ссылка скопирована',
+  feedback: 'Отправить отзыв', privacy: 'Политика конфиденциальности',
+  disclaimer: 'Ваши фото обрабатываются только на устройстве и никуда не загружаются. Используйте только фото, на которые у вас есть права. Результат зависит от выбранных фото.',
+  diagIntro: 'Технический отчёт для поддержки. В нём нет фото и личного содержимого.', sendReport: 'Отправить отчёт', clearErrors: 'Очистить ошибки', askPersist: 'Защитить хранилище'
+};
+
+LANG.es = {
+  langName: 'Español', skip: 'Saltar al contenido', home: 'Inicio', back: 'Volver', ok: 'Aceptar', cancel: 'Cancelar', cancelling: 'Deteniendo…', cancelled: 'Cancelado', close: 'Cerrar',
+  save: 'Guardar', create: 'Crear', delete: 'Eliminar', deleted: 'Eliminado', edit: 'Editar', remove: 'Quitar', done: 'Listo', next: 'Siguiente', prev: 'Anterior', start: 'Empecemos', continue: 'Continuar',
+  areYouSure: '¿Seguro?', name: 'Nombre', photo: 'Foto', photos: 'Fotos', copy: 'Copiar', copied: 'Copiado', copyFail: 'No se pudo copiar', unknown: 'Desconocido',
+  saveFail: 'No se pudo guardar: el almacenamiento está bloqueado o lleno', screenFail: 'Algo salió mal en esta pantalla. Inténtalo de nuevo.',
+  tagline: 'Mosaicos de fotos y collages, hechos en tu dispositivo', hello: 'Hola, {name} 👋',
+  mosaicTitle: 'Mosaico de fotos', mosaicDesc: 'Una gran imagen hecha con cientos de tus fotos', collage: 'Collage', collageDesc: 'Cuadrículas con espacios y esquinas',
+  settingsDesc: 'Nombre, idioma, copia', nLibs: '{n} bibliotecas', nItems: '{n} guardados', nPhotos: '{n} fotos',
+  scr_home: 'Inicio', scr_mosaic: 'Mosaico de fotos', scr_collage: 'Collage', scr_libs: 'Bibliotecas de teselas', scr_lib: 'Biblioteca', scr_gallery: 'Mis creaciones', scr_view: 'Creación',
+  scr_settings: 'Ajustes', scr_about: 'Acerca de', scr_guide: 'Guía', scr_diag: 'Diagnóstico',
+  chooseTheme: 'Tema', dayMode: 'Modo día', toDay: 'Cambiar a modo día', toNight: 'Cambiar a modo noche', language: 'Idioma', look: 'Aspecto',
+  th_gold: 'Negro y oro', th_sapphire: 'Zafiro', th_emerald: 'Esmeralda', th_ruby: 'Rubí', th_amethyst: 'Amatista',
+  fileWarn: 'Abierta como archivo local (file://). Así no funcionan el modo sin conexión ni la instalación: ábrela desde su dirección web.',
+  memWarn: 'Este navegador bloquea el almacenamiento (¿modo privado?). Puedes trabajar, pero bibliotecas y creaciones se perderán al cerrar.',
+  resumeMosaic: 'Seguir editando el último mosaico', mainPhoto: 'Foto principal', pickMain: 'Elige la foto principal', pickMainHint: 'La gran imagen que mostrará el mosaico',
+  mainChosen: 'Foto principal', tapToChange: 'Toca para cambiar', useSample: 'Usar una foto de ejemplo', sampleName: 'Atardecer (ejemplo)',
+  tileLib: 'Biblioteca de teselas', noLibsYet: 'Aún no hay bibliotecas. Añade fotos de un viaje, una fiesta o toda tu galería: cuantas más, mejor.',
+  addToThisLib: 'Añadir fotos a esta biblioteca', newLibPhotos: 'Añadir fotos', newLib: 'Nueva biblioteca', addFolder: 'Añadir carpeta', demoTiles: 'Teselas de ejemplo',
+  fewTiles: 'Solo {n} fotos. Funcionará, pero las mismas fotos se repetirán mucho. Con 150 o más el mosaico es mucho más rico.',
+  mosaicSettings: 'Ajustes', tilesAcross: 'Teselas a lo ancho', gridInfo: '{c} × {r} = {n} teselas', gridNeedsMain: 'Elige una foto principal para ver el tamaño de la cuadrícula',
+  tileShape: 'Forma de tesela', asp_1_1: 'Cuadrada', asp_4_3: 'Horizontal 4:3', asp_3_4: 'Vertical 3:4',
+  variety: 'Variedad', var_low: 'Color exacto', var_med: 'Equilibrado', var_high: 'Máxima variedad',
+  varietyHint: 'Más variedad = menos repeticiones de la misma foto juntas; colores un poco menos exactos.',
+  allowFlip: 'Permitir teselas en espejo', allowFlipHint: 'Duplica las opciones: una foto reflejada a veces encaja mejor',
+  makeMosaic: 'Crear mosaico', needMain: 'Primero elige una foto principal', needLib: 'Elige una biblioteca con fotos',
+  creating: 'Creando tu mosaico', analyzing: 'Analizando colores…', matching: 'Emparejando teselas… {p}%', drawing: 'Dibujando…', loadingTiles: 'Cargando teselas {n}/{t}',
+  mosaicFail: 'No se pudo crear el mosaico. Prueba con menos teselas a lo ancho.', reshuffled: 'Nueva disposición lista', loadingPhoto: 'Cargando foto…', decodeFail: 'No se pudo abrir esta imagen',
+  heicFail: 'No se pudieron abrir {n} fotos HEIC. Conviértelas a JPG o usa «Más compatible» en la cámara.',
+  libsIntro: 'Una biblioteca es un conjunto de fotos pequeñas que se convierten en las teselas del mosaico. Puedes tener una por viaje, familia, evento…',
+  libDefaultName: 'Biblioteca {d}', editLib: 'Editar biblioteca', deleteLib: 'Eliminar biblioteca', deleteLibQ: '¿Eliminar «{name}» y todas sus fotos de la app? (Tus fotos originales no se tocan.)',
+  importing: 'Añadiendo fotos', importedN: '{n} de {t}', importDone: '{n} fotos añadidas', dupSkipped: '{n} duplicadas omitidas', failedN: '{n} fallidas',
+  noImages: 'No se seleccionaron imágenes', storageFull: 'El almacenamiento está lleno: libera espacio o elimina una biblioteca',
+  makingDemo: 'Creando teselas de ejemplo…', demoLib: 'Teselas de ejemplo', demoReady: 'Las teselas de ejemplo están listas',
+  addPhotos: 'Añadir fotos', selectToRemove: 'Seleccionar para quitar', doneSelecting: 'Listo', selectedN: '{n} seleccionadas', removeQ: '¿Quitar {n} fotos de esta biblioteca?',
+  useForMosaic: 'Usar para un mosaico', libTip: 'En la app se guardan copias pequeñas (unos 20 KB). Tus originales se quedan donde están.',
+  libEmpty: 'Esta biblioteca está vacía. Añade fotos para empezar.', showAllN: 'Mostrar las {n}',
+  mosaic: 'Mosaico', mosaicCanvas: 'Vista del mosaico: pellizca para ampliar, toca una tesela para cambiarla', undo: 'Deshacer', redo: 'Rehacer',
+  zoomIn: 'Ampliar', zoomOut: 'Reducir', zoomFit: 'Ajustar a la pantalla', style: 'Estilo', exportSave: 'Exportar / guardar', reshuffle: 'Mezclar', changeSetup: 'Ajustes',
+  edHint: '{n} teselas · pellizca para ampliar · toca una tesela para cambiarla',
+  tint: 'Tinte de color', tintHint: '0% = mosaico puro, sin trucos', overlay: 'Superponer la foto principal', overlayHint: 'Aclara la imagen grande, menos «real»',
+  grout: 'Espacio entre teselas', groutColor: 'Color del espacio', customColor: 'Color personalizado', shape: 'Forma', sh_square: 'Cuadrado', sh_rounded: 'Redondeado', sh_circle: 'Círculos',
+  swapTitle: 'Cambiar esta tesela', swapHint: 'Primero las mejores coincidencias. La foto actual se usa {u} veces.', showMore: 'Mostrar más', flipThis: 'Espejo', useThis: 'Usar esta foto',
+  exportTitle: 'Exportar', size: 'Tamaño', format: 'Formato', fmtHint: 'JPG = archivo pequeño · PNG = sin compresión (grande)',
+  phoneLimit: 'En el móvil el tamaño está limitado para cuidar la memoria. 8K va mejor en un ordenador.',
+  addSignature: 'Añadir mi nombre en la esquina', download: 'Descargar', share: 'Compartir', saveGallery: 'Guardar en mis creaciones',
+  rendering: 'Renderizando en calidad completa', renderingN: 'Foto {n} de {t}', encoding: 'Guardando el archivo…', saving: 'Guardando…',
+  savedGallery: 'Guardado en «Mis creaciones»', downloaded: 'Descargado · {w}×{h}', exportRetry: 'Demasiado grande para este dispositivo: probando un tamaño menor', exportFail: 'La exportación falló. Prueba un tamaño menor.',
+  shareMade: 'Hecho con CollageNest', shareMadeBy: '{name} lo hizo con CollageNest', shareFallback: 'No se puede compartir: el archivo se descargó',
+  resumeCollage: 'Seguir con el último collage', collageIntro: 'Elige hasta {n} fotos y una plantilla; arrastra para encuadrar cada foto.',
+  pickPhotos: 'Elegir fotos', pickPhotosHint: 'Hasta {n} fotos', templates: 'Plantillas', loadingPhotos: 'Cargando fotos',
+  collageMax: 'Hasta {n} fotos por collage', collageCanvas: 'Vista del collage: toca una celda para seleccionarla', collageHint: 'Toca una foto para seleccionarla',
+  cellHint: 'Arrastra para encuadrar · pellizca o usa el control para ampliar', swapPick: 'Toca la celda con la que intercambiar', zoom: 'Zoom', replace: 'Cambiar', swapWith: 'Intercambiar con…',
+  resetCell: 'Restablecer', removePhoto: 'Quitar', template: 'Plantilla', ratio: 'Proporción', spacing: 'Espaciado', corners: 'Esquinas', background: 'Fondo',
+  tplN: 'Plantilla para {n} fotos', collageEmpty: 'Añade al menos una foto',
+  galEmpty: 'Aún no hay nada guardado. Crea un mosaico o un collage y toca «Guardar en mis creaciones».',
+  galNote: 'Guardado solo en este dispositivo. Descarga las importantes: no se incluyen en la copia JSON.', editItem: 'Editar creación', deleteItemQ: '¿Eliminar esta creación?',
+  profile: 'Perfil', userName: 'Nombre de usuario', userNamePh: 'Nombre / apodo / familia', userNameHint: 'Aparece al compartir y en la firma opcional.',
+  exportDefaults: 'Exportación predeterminada', signHint: 'Usa tu nombre de usuario', signNeedsName: 'Primero añade un nombre de usuario',
+  dataBackup: 'Datos y copia', storage: 'Almacenamiento', used: 'Usado', persistYes: 'Protegido (persistente)', persistNo: 'No protegido: el navegador puede borrarlo si falta espacio',
+  backupNote: 'Copia de ajustes = archivo pequeño. La copia completa incluye también todas las bibliotecas (puede ser grande). Las creaciones guardadas no se incluyen: descárgalas desde la galería.',
+  backupSettings: 'Copia de ajustes', backupFull: 'Copia completa', restore: 'Restaurar', backingUp: 'Preparando la copia…', backupDone: 'Copia guardada ({s})',
+  restoreBad: 'Este no es un archivo de copia de CollageNest', restoreFullQ: 'Restaurar reemplaza tus ajustes y TODAS las bibliotecas. ¿Continuar?', restoreSetQ: '¿Restaurar los ajustes desde este archivo?',
+  restoring: 'Restaurando…', restored: 'Restaurado', help: 'Ayuda', replayIntro: 'Ver la introducción otra vez', dangerZone: 'Zona de peligro', deleteAll: 'Eliminar todos los datos',
+  deleteAllQ1: 'Esto elimina todas las bibliotecas, creaciones y ajustes de este dispositivo.', deleteAllQ2: 'Última comprobación: ¿eliminar todo? No se puede deshacer.', allDeleted: 'Se eliminó todo',
+  g1t: 'Bienvenido a CollageNest', g1: 'Mosaicos de fotos y collages como en los programas clásicos, directamente en el navegador. Nada se sube a ningún sitio.',
+  g2t: 'Un mosaico de fotos', g2: 'Elige una foto principal. CollageNest la reconstruye con cientos de fotos pequeñas, eligiendo cada una por color y forma.',
+  g3t: 'Bibliotecas de teselas', g3: 'Añade una carpeta de fotos (un viaje, un evento, la familia). Se guardan en la app; la próxima vez solo eliges la biblioteca.',
+  g4t: 'Ampliar y cambiar', g4: 'Pellizca para ampliar hasta ver cada foto. Toca una tesela para ver las mejores alternativas. Siempre puedes deshacer.',
+  g5t: 'Collages', g5: 'Hasta 16 fotos, una plantilla, espaciado y esquinas. Arrastra dentro de una celda para encuadrar.',
+  g6t: 'Privado por diseño', g6: 'Todo el proceso ocurre en tu dispositivo. Instala la app desde el menú del navegador para usarla sin conexión.',
+  tipsTitle: 'Consejos para un gran mosaico', tip1: 'Usa entre 150 y 1000 fotos de teselas con muchos colores distintos.', tip2: 'Funciona mejor una foto principal con un tema claro y mucho contraste (caras, atardeceres, mascotas).',
+  tip3: '40–80 teselas a lo ancho es el punto ideal. Más teselas = más detalle, pero fotos más pequeñas.', tip4: 'Un tinte del 10–25% ayuda a la imagen grande sin ocultar las pequeñas.',
+  tip5: '¿Quieres ver cada foto? Menos teselas a lo ancho y exporta en 4K u 8K.', tip6: 'Para imprimir, exporta PNG en el tamaño más grande desde un ordenador.',
+  version: 'Versión', developer: 'Desarrollo', platform: 'Plataforma', onDeviceOnly: 'Solo en este dispositivo', license: 'Licencia',
+  storeLink: 'Tienda AppNest', shareApp: 'Compartir la app', shareAppText: 'CollageNest: mosaicos de fotos y collages en tu móvil', linkCopied: 'Enlace copiado',
+  feedback: 'Enviar comentarios', privacy: 'Política de privacidad',
+  disclaimer: 'Tus fotos se procesan solo en tu dispositivo y nunca se suben. Usa solo fotos que tengas derecho a usar. El resultado depende de las fotos elegidas.',
+  diagIntro: 'Un informe técnico para soporte. No contiene fotos ni contenido personal.', sendReport: 'Enviar informe', clearErrors: 'Borrar errores', askPersist: 'Proteger almacenamiento'
+};
+
+LANG.ar = {
+  langName: 'العربية', skip: 'انتقل إلى المحتوى', home: 'الرئيسية', back: 'رجوع', ok: 'موافق', cancel: 'إلغاء', cancelling: 'جارٍ الإيقاف…', cancelled: 'تم الإلغاء', close: 'إغلاق',
+  save: 'حفظ', create: 'إنشاء', delete: 'حذف', deleted: 'تم الحذف', edit: 'تعديل', remove: 'إزالة', done: 'تم', next: 'التالي', prev: 'السابق', start: 'لنبدأ', continue: 'متابعة',
+  areYouSure: 'هل أنت متأكد؟', name: 'الاسم', photo: 'صورة', photos: 'صور', copy: 'نسخ', copied: 'تم النسخ', copyFail: 'تعذّر النسخ', unknown: 'غير معروف',
+  saveFail: 'فشل الحفظ — التخزين محجوب أو ممتلئ', screenFail: 'حدث خطأ في هذه الشاشة. حاول مرة أخرى.',
+  tagline: 'فسيفساء الصور والكولاج — على جهازك', hello: 'مرحبًا {name} 👋',
+  mosaicTitle: 'فسيفساء الصور', mosaicDesc: 'صورة كبيرة واحدة مبنية من مئات صورك', collage: 'كولاج', collageDesc: 'قوالب شبكية مع مسافات وزوايا',
+  settingsDesc: 'الاسم، اللغة، النسخ الاحتياطي', nLibs: '{n} مكتبات', nItems: '{n} محفوظة', nPhotos: '{n} صور',
+  scr_home: 'الرئيسية', scr_mosaic: 'فسيفساء الصور', scr_collage: 'كولاج', scr_libs: 'مكتبات البلاطات', scr_lib: 'مكتبة', scr_gallery: 'أعمالي', scr_view: 'عمل',
+  scr_settings: 'الإعدادات', scr_about: 'حول التطبيق', scr_guide: 'الدليل', scr_diag: 'التشخيص',
+  chooseTheme: 'السمة', dayMode: 'الوضع النهاري', toDay: 'التبديل إلى الوضع النهاري', toNight: 'التبديل إلى الوضع الليلي', language: 'اللغة', look: 'المظهر',
+  th_gold: 'أسود وذهبي', th_sapphire: 'ياقوت أزرق', th_emerald: 'زمرد', th_ruby: 'ياقوت أحمر', th_amethyst: 'جمشت',
+  fileWarn: 'فُتح التطبيق كملف محلي (file://). بهذه الطريقة لا يعمل وضع عدم الاتصال ولا التثبيت — افتحه من عنوانه على الويب.',
+  memWarn: 'هذا المتصفح يحجب التخزين (وضع التصفح الخاص؟). يمكنك العمل، لكن المكتبات والأعمال ستضيع عند الإغلاق.',
+  resumeMosaic: 'متابعة تعديل آخر فسيفساء', mainPhoto: 'الصورة الرئيسية', pickMain: 'اختر الصورة الرئيسية', pickMainHint: 'الصورة الكبيرة التي ستُظهرها الفسيفساء',
+  mainChosen: 'الصورة الرئيسية', tapToChange: 'اضغط للتغيير', useSample: 'استخدم صورة نموذجية', sampleName: 'غروب (نموذج)',
+  tileLib: 'مكتبة البلاطات', noLibsYet: 'لا توجد مكتبات بعد. أضف صورًا من رحلة أو مناسبة أو المعرض كله — كلما زادت كان أفضل.',
+  addToThisLib: 'أضف صورًا إلى هذه المكتبة', newLibPhotos: 'أضف صورًا', newLib: 'مكتبة جديدة', addFolder: 'أضف مجلدًا', demoTiles: 'بلاطات نموذجية',
+  fewTiles: '{n} صور فقط. سيعمل ذلك، لكن الصور نفسها ستتكرر كثيرًا. 150 صورة أو أكثر تعطي فسيفساء أغنى بكثير.',
+  mosaicSettings: 'الإعدادات', tilesAcross: 'البلاطات بالعرض', gridInfo: '{c} × {r} = {n} بلاطة', gridNeedsMain: 'اختر صورة رئيسية لترى حجم الشبكة',
+  tileShape: 'شكل البلاطة', asp_1_1: 'مربع', asp_4_3: 'أفقي 4:3', asp_3_4: 'عمودي 3:4',
+  variety: 'التنوع', var_low: 'لون دقيق', var_med: 'متوازن', var_high: 'أكثر تنوعًا',
+  varietyHint: 'تنوع أكثر = تكرار أقل للصورة نفسها بجانب بعضها؛ ألوان أقل دقة قليلًا.',
+  allowFlip: 'السماح ببلاطات معكوسة', allowFlipHint: 'يضاعف الخيارات — الصورة المعكوسة تناسب أحيانًا بشكل أفضل',
+  makeMosaic: 'إنشاء الفسيفساء', needMain: 'اختر صورة رئيسية أولًا', needLib: 'اختر مكتبة بلاطات فيها صور',
+  creating: 'جارٍ إنشاء الفسيفساء', analyzing: 'تحليل الألوان…', matching: 'مطابقة البلاطات… {p}%', drawing: 'جارٍ الرسم…', loadingTiles: 'تحميل البلاطات {n}/{t}',
+  mosaicFail: 'تعذّر إنشاء الفسيفساء. جرّب عددًا أقل من البلاطات بالعرض.', reshuffled: 'ترتيب جديد جاهز', loadingPhoto: 'تحميل الصورة…', decodeFail: 'تعذّر فتح هذه الصورة',
+  heicFail: 'تعذّر فتح {n} صور HEIC. حوّلها إلى JPG أو اختر «الأكثر توافقًا» في الكاميرا.',
+  libsIntro: 'المكتبة مجموعة صور صغيرة تصبح بلاطات الفسيفساء. يمكنك إنشاء واحدة لكل رحلة أو عائلة أو مناسبة…',
+  libDefaultName: 'مكتبة {d}', editLib: 'تعديل المكتبة', deleteLib: 'حذف المكتبة', deleteLibQ: 'حذف «{name}» وكل صورها من التطبيق؟ (صورك الأصلية لا تتأثر.)',
+  importing: 'إضافة الصور', importedN: '{n} من {t}', importDone: 'أُضيفت {n} صور', dupSkipped: 'تُخطّيت {n} مكررة', failedN: 'فشلت {n}',
+  noImages: 'لم يتم اختيار صور', storageFull: 'تخزين الجهاز ممتلئ — أفرغ بعض المساحة أو احذف مكتبة',
+  makingDemo: 'إنشاء بلاطات نموذجية…', demoLib: 'بلاطات نموذجية', demoReady: 'البلاطات النموذجية جاهزة',
+  addPhotos: 'أضف صورًا', selectToRemove: 'تحديد للإزالة', doneSelecting: 'تم', selectedN: 'تم تحديد {n}', removeQ: 'إزالة {n} صور من هذه المكتبة؟',
+  useForMosaic: 'استخدمها لفسيفساء', libTip: 'يحفظ التطبيق نسخًا صغيرة (نحو 20 كيلوبايت). تبقى صورك الأصلية في مكانها.',
+  libEmpty: 'هذه المكتبة فارغة. أضف صورًا للبدء.', showAllN: 'اعرض كل الـ {n}',
+  mosaic: 'فسيفساء', mosaicCanvas: 'معاينة الفسيفساء — قرّب بإصبعين، واضغط على بلاطة لاستبدالها', undo: 'تراجع', redo: 'إعادة',
+  zoomIn: 'تكبير', zoomOut: 'تصغير', zoomFit: 'ملاءمة الشاشة', style: 'النمط', exportSave: 'تصدير / حفظ', reshuffle: 'خلط', changeSetup: 'الإعدادات',
+  edHint: '{n} بلاطة · قرّب بإصبعين · اضغط على بلاطة لاستبدالها',
+  tint: 'صبغة لونية', tintHint: '0% = فسيفساء نقية بلا حيل', overlay: 'تراكب الصورة الرئيسية', overlayHint: 'يوضّح الصورة الكبيرة، لكنه أقل «أصالة»',
+  grout: 'المسافة بين البلاطات', groutColor: 'لون المسافة', customColor: 'لون مخصص', shape: 'الشكل', sh_square: 'مربع', sh_rounded: 'مستدير الزوايا', sh_circle: 'دوائر',
+  swapTitle: 'استبدال هذه البلاطة', swapHint: 'أفضل التطابقات أولًا. الصورة الحالية مستخدمة {u} مرات.', showMore: 'عرض المزيد', flipThis: 'عكس', useThis: 'استخدم هذه الصورة',
+  exportTitle: 'تصدير', size: 'الحجم', format: 'الصيغة', fmtHint: 'JPG = ملف أصغر · PNG = بلا ضغط (كبير)',
+  phoneLimit: 'على الهاتف الحجم محدود لحماية الذاكرة. يعمل 8K بشكل أفضل على الحاسوب.',
+  addSignature: 'أضف اسمي في الزاوية', download: 'تنزيل', share: 'مشاركة', saveGallery: 'حفظ في أعمالي',
+  rendering: 'إنشاء بجودة كاملة', renderingN: 'صورة {n} من {t}', encoding: 'حفظ الملف…', saving: 'جارٍ الحفظ…',
+  savedGallery: 'حُفظ في «أعمالي»', downloaded: 'تم التنزيل · {w}×{h}', exportRetry: 'الحجم كبير على هذا الجهاز — نجرّب حجمًا أصغر', exportFail: 'فشل التصدير. جرّب حجمًا أصغر.',
+  shareMade: 'صُنع في CollageNest', shareMadeBy: '{name} صنع هذا في CollageNest', shareFallback: 'المشاركة غير متاحة — تم تنزيل الملف',
+  resumeCollage: 'متابعة آخر كولاج', collageIntro: 'اختر حتى {n} صور وقالبًا، واسحب لتأطير كل صورة.',
+  pickPhotos: 'اختر الصور', pickPhotosHint: 'حتى {n} صور', templates: 'القوالب', loadingPhotos: 'تحميل الصور',
+  collageMax: 'حتى {n} صور في الكولاج', collageCanvas: 'معاينة الكولاج — اضغط على خلية لتحديدها', collageHint: 'اضغط على صورة لتحديدها',
+  cellHint: 'اسحب للتأطير · قرّب بإصبعين أو بالمنزلق', swapPick: 'اضغط على الخلية للتبديل معها', zoom: 'تكبير', replace: 'استبدال', swapWith: 'تبديل مع…',
+  resetCell: 'إعادة ضبط', removePhoto: 'إزالة', template: 'القالب', ratio: 'النسبة', spacing: 'المسافات', corners: 'الزوايا', background: 'الخلفية',
+  tplN: 'قالب لـ {n} صور', collageEmpty: 'أضف صورة واحدة على الأقل',
+  galEmpty: 'لا شيء محفوظ بعد. أنشئ فسيفساء أو كولاج واضغط «حفظ في أعمالي».',
+  galNote: 'محفوظ على هذا الجهاز فقط. نزّل المهم منها — فهي ليست ضمن نسخة JSON الاحتياطية.', editItem: 'تعديل العمل', deleteItemQ: 'حذف هذا العمل؟',
+  profile: 'الملف الشخصي', userName: 'اسم المستخدم', userNamePh: 'الاسم / اللقب / العائلة', userNameHint: 'يظهر عند المشاركة وفي التوقيع الاختياري.',
+  exportDefaults: 'إعدادات التصدير الافتراضية', signHint: 'يستخدم اسم المستخدم', signNeedsName: 'أضف اسم مستخدم أولًا',
+  dataBackup: 'البيانات والنسخ الاحتياطي', storage: 'التخزين', used: 'المستخدم', persistYes: 'محمي (دائم)', persistNo: 'غير محمي — قد يمسحه المتصفح عند نقص المساحة',
+  backupNote: 'نسخة الإعدادات = ملف صغير. النسخة الكاملة تشمل كل المكتبات أيضًا (قد تكون كبيرة). الأعمال المحفوظة غير مشمولة — نزّلها من المعرض.',
+  backupSettings: 'نسخ الإعدادات', backupFull: 'نسخة كاملة', restore: 'استعادة', backingUp: 'تجهيز النسخة…', backupDone: 'حُفظت النسخة ({s})',
+  restoreBad: 'هذا ليس ملف نسخة احتياطية من CollageNest', restoreFullQ: 'الاستعادة تستبدل الإعدادات وكل المكتبات. متابعة؟', restoreSetQ: 'استعادة الإعدادات من هذا الملف؟',
+  restoring: 'جارٍ الاستعادة…', restored: 'تمت الاستعادة', help: 'مساعدة', replayIntro: 'عرض المقدمة مجددًا', dangerZone: 'منطقة الخطر', deleteAll: 'حذف كل البيانات',
+  deleteAllQ1: 'سيؤدي هذا إلى حذف كل المكتبات والأعمال والإعدادات من هذا الجهاز.', deleteAllQ2: 'تأكيد أخير: حذف كل شيء؟ لا يمكن التراجع.', allDeleted: 'تم حذف كل شيء',
+  g1t: 'مرحبًا بك في CollageNest', g1: 'فسيفساء الصور والكولاج كما في البرامج الكلاسيكية — مباشرة في المتصفح. لا يُرفع أي شيء إلى أي مكان.',
+  g2t: 'فسيفساء الصور', g2: 'اختر صورة رئيسية واحدة. يعيد CollageNest بناءها من مئات الصور الصغيرة، مطابقًا كل موضع حسب اللون والشكل.',
+  g3t: 'مكتبات البلاطات', g3: 'أضف مجلد صور (رحلة، مناسبة، العائلة). تُحفظ في التطبيق، وفي المرة القادمة تختار المكتبة فقط.',
+  g4t: 'التكبير والاستبدال', g4: 'قرّب بإصبعين حتى ترى كل صورة. اضغط على بلاطة لترى أفضل البدائل. التراجع متاح دائمًا.',
+  g5t: 'الكولاج', g5: 'حتى 16 صورة، قالب، مسافات وزوايا. اسحب داخل الخلية لتأطير الصورة.',
+  g6t: 'خصوصية من الأساس', g6: 'كل المعالجة تتم على جهازك. ثبّت التطبيق من قائمة المتصفح لاستخدامه دون اتصال.',
+  tipsTitle: 'نصائح لفسيفساء رائعة', tip1: 'استخدم 150 إلى 1000 صورة للبلاطات بألوان متنوعة.', tip2: 'تعمل الصورة الرئيسية ذات الموضوع الواضح والتباين القوي بشكل أفضل (وجوه، غروب، حيوانات).',
+  tip3: '40–80 بلاطة بالعرض هو التوازن المثالي. بلاطات أكثر = تفاصيل أكثر لكن صور أصغر.', tip4: 'صبغة 10–25% تساعد الصورة الكبيرة دون إخفاء الصغيرة.',
+  tip5: 'تريد رؤية كل صورة؟ بلاطات أقل بالعرض وتصدير بدقة 4K أو 8K.', tip6: 'للطباعة، صدّر PNG بأكبر حجم من الحاسوب.',
+  version: 'الإصدار', developer: 'المطوّر', platform: 'المنصة', onDeviceOnly: 'على هذا الجهاز فقط', license: 'الترخيص',
+  storeLink: 'متجر AppNest', shareApp: 'شارك التطبيق', shareAppText: 'CollageNest — فسيفساء الصور والكولاج على هاتفك', linkCopied: 'تم نسخ الرابط',
+  feedback: 'إرسال ملاحظات', privacy: 'سياسة الخصوصية',
+  disclaimer: 'تُعالج صورك على جهازك فقط ولا تُرفع أبدًا. استخدم فقط الصور التي يحق لك استخدامها. النتيجة تعتمد على الصور التي تختارها.',
+  diagIntro: 'تقرير تقني للدعم. لا يحتوي على صور أو محتوى شخصي.', sendReport: 'إرسال التقرير', clearErrors: 'مسح الأخطاء', askPersist: 'حماية التخزين'
+};
+
+/* ═══ CollageNest — screens: home, libraries, gallery, settings, about, guide, diagnostics, router, init ═══ */
+
+/* ── router (Android back button friendly) ── */
+const SCREENS = {
+  home: renderHome, mosaic: renderMosaicSetup, collage: renderCollageSetup, libs: renderLibs, lib: renderLib,
+  gallery: renderGallery, view: renderViewer, settings: renderSettings, about: renderAbout, guide: renderGuide, diag: renderDiag
+};
+let cur = { s: 'home', a: null };
+function go(s, a, replace) { const st = { s, a: a == null ? null : a }; if (replace) history.replaceState(st, ''); else history.pushState(st, ''); return show(st); }
+async function show(st) {
+  if (!st || (!SCREENS[st.s] && st.s !== 'editor' && st.s !== 'collageEd')) st = { s: 'home', a: null };
+  if (cur.s === 'editor' && st.s !== 'editor') Ed.close();
+  if (cur.s === 'collageEd' && st.s !== 'collageEd') CEd.close();
+  if (st.s === 'lib' && (cur.s !== 'lib' || cur.a !== st.a)) { libSel = null; libShowAll = false; }
+  revokeURLs(); cur = st;
+  const home = st.s === 'home';
+  $('homeBtn').classList.toggle('hidden', home);
+  $('title').innerHTML = home ? '<span class="brand">Collage</span>Nest' : esc(T('scr_' + st.s));
+  if (st.s === 'editor') { if (!MS) return go('mosaic', null, true); Ed.open(); return; }
+  if (st.s === 'collageEd') { if (!CS) return go('collage', null, true); CEd.open(); return; }
+  try { await SCREENS[st.s](st.a); } catch (e) { logErr('screen ' + st.s + ': ' + (e && e.message)); $('main').innerHTML = '<div class="empty"><span class="em">⚠️</span>' + esc(T('screenFail')) + '</div>'; }
+  window.scrollTo(0, 0);
+}
+addEventListener('popstate', e => {
+  if (modalStack.length) { modalStack[modalStack.length - 1].close(); history.pushState(cur, ''); return; }
+  if (Prog.cur) { history.pushState(cur, ''); return; }
+  show(e.state || { s: 'home' });
+});
+
+/* ── home ── */
+async function renderHome() {
+  const libs = await DB.all('libs'), gal = await DB.all('gallery');
+  const warn = location.protocol === 'file:' ? '<div class="banner">⚠️ ' + esc(T('fileWarn')) + '</div>' : '';
+  const memWarn = DB.isMem() ? '<div class="banner">⚠️ ' + esc(T('memWarn')) + '</div>' : '';
+  $('main').innerHTML = '<div class="screen">' + warn + memWarn +
+    '<div class="hero"><img class="logo" src="icon-192.png" alt=""><h2><span>Collage</span>Nest</h2><p>' + esc(T('tagline')) + '</p>' +
+    (S.name ? '<div class="hello">' + esc(T('hello', { name: S.name })) + '</div>' : '') + '</div>' +
+    '<div class="tiles">' +
+    '<button class="tile big" type="button" data-go="mosaic"><span class="em">🧩</span><b>' + esc(T('mosaicTitle')) + '</b><small>' + esc(T('mosaicDesc')) + '</small></button>' +
+    '<button class="tile" type="button" data-go="collage"><span class="em">🖼️</span><b>' + esc(T('collage')) + '</b><small>' + esc(T('collageDesc')) + '</small></button>' +
+    '<button class="tile" type="button" data-go="libs"><span class="em">📚</span><b>' + esc(T('scr_libs')) + '</b><small>' + esc(T('nLibs', { n: nf(libs.length) })) + '</small></button>' +
+    '<button class="tile" type="button" data-go="gallery"><span class="em">🗂️</span><b>' + esc(T('scr_gallery')) + '</b><small>' + esc(T('nItems', { n: nf(gal.length) })) + '</small></button>' +
+    '<button class="tile" type="button" data-go="settings"><span class="em">⚙️</span><b>' + esc(T('scr_settings')) + '</b><small>' + esc(T('settingsDesc')) + '</small></button>' +
+    '</div><div class="quick">' +
+    '<button class="chip" type="button" data-go="guide">📖 ' + esc(T('scr_guide')) + '</button>' +
+    '<button class="chip" type="button" data-go="about">ℹ️ ' + esc(T('scr_about')) + '</button>' +
+    '<button class="chip" type="button" id="hLang">🌐 ' + esc(LANG[S.lang].langName) + '</button>' +
+    '<button class="chip" type="button" id="hTheme">🎨 ' + esc(T('chooseTheme')) + '</button></div>' +
+    '<span class="badge"><b>AppNest</b> · CollageNest v' + APP_VERSION + '</span></div>';
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
+  $('hLang').onclick = langPicker; $('hTheme').onclick = themePicker;
+}
+function langPicker() {
+  const m = openModal({ title: T('language'), html: '<div class="seg" style="flex-direction:column">' + Object.keys(LANG).map(k => '<button type="button" data-l="' + k + '" class="' + (S.lang === k ? 'on' : '') + '" style="justify-content:flex-start;text-align:start">' + esc(LANG[k].langName) + '</button>').join('') + '</div>', actions: [{ label: T('close'), cls: 'primary' }] });
+  m.body.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { setLang(b.dataset.l); m.close(); });
+}
+function setLang(l) { S.lang = l; saveS(); applyLang(); show(cur); }
+function applyLang() {
+  const r = document.documentElement; r.lang = S.lang; r.dir = isRTL() ? 'rtl' : 'ltr';
+  $('skipLink').textContent = T('skip');
+  $('homeBtn').textContent = '🏠 ' + T('home'); $('homeBtn').onclick = () => go('home');
+  $('themeBtn').setAttribute('aria-label', T('chooseTheme'));
+  applyTheme();
+}
+
+/* ── libraries ── */
+async function editLibDialog(id, after) {
+  const lib = await DB.get('libs', id); if (!lib) return;
+  const m = openModal({
+    title: T('editLib'),
+    html: '<label class="f" for="elName">' + esc(T('name')) + '</label><input type="text" id="elName" maxlength="60" value="' + esc(lib.name) + '">' +
+      '<p class="small muted">' + esc(T('nPhotos', { n: nf(lib.count) })) + ' · ' + esc(df(lib.created)) + '</p>' +
+      '<button class="btn danger sm" id="elDel" type="button" style="margin-top:6px">🗑 ' + esc(T('deleteLib')) + '</button>',
+    actions: [{ label: T('cancel'), cls: 'ghost' }, { label: T('save'), cls: 'primary', onClick: async () => { lib.name = $('elName').value.trim() || lib.name; await DB.put('libs', lib); after && after(); } }]
+  });
+  $('elDel').onclick = async () => {
+    if (!await confirmBox(T('deleteLibQ', { name: lib.name }), T('delete'), true)) return;
+    await DB.delLib(id); LibCache.drop(id); if (MS && MS.libId === id) MS = null;
+    m.close(); toast(T('deleted')); after && after();
+  };
+}
+async function renderLibs() {
+  const libs = (await DB.all('libs')).sort((a, b) => b.updated - a.updated);
+  let html = '<div class="screen"><p class="muted">' + esc(T('libsIntro')) + '</p><div class="row" style="margin-bottom:14px"><button class="btn primary" id="lNew" type="button">➕ ' + esc(T('newLib')) + '</button>' +
+    (!libs.some(l => l.demo) ? '<button class="btn ghost" id="lDemo" type="button">🎨 ' + esc(T('demoTiles')) + '</button>' : '') + '</div>';
+  if (!libs.length) html += '<div class="empty"><span class="em">📚</span>' + esc(T('noLibsYet')) + '</div>';
+  else {
+    html += '<div class="libs">';
+    for (const l of libs) html += '<div class="lib" data-lib="' + l.id + '" role="button" tabindex="0"><div class="cov">' + await libCoverHTML(l) + '</div><div class="meta"><b>' + esc(l.name) + '</b><small>' + esc(T('nPhotos', { n: nf(l.count) })) + '</small></div><button class="ed" type="button" data-ed="' + l.id + '" aria-label="' + esc(T('edit')) + '">✏️</button></div>';
+    html += '</div>';
+  }
+  $('main').innerHTML = html + '</div>';
+  $('lNew').onclick = async () => {
+    const name = await promptBox(T('newLib'), T('libDefaultName', { d: df(Date.now()) }), T('create')); if (name == null) return;
+    const l = await newLibrary(name); go('lib', l.id);
+  };
+  if ($('lDemo')) $('lDemo').onclick = async () => { await makeDemoLibrary(); toast(T('demoReady')); renderLibs(); };
+  document.querySelectorAll('[data-lib]').forEach(el => {
+    el.onclick = e => { if (e.target.closest('[data-ed]')) return; go('lib', el.dataset.lib); };
+    el.onkeydown = e => { if (e.key === 'Enter') go('lib', el.dataset.lib); };
+    onLongPress(el, () => editLibDialog(el.dataset.lib, renderLibs));
+  });
+  document.querySelectorAll('[data-ed]').forEach(b => b.onclick = e => { e.stopPropagation(); editLibDialog(b.dataset.ed, renderLibs); });
+}
+let libSel = null, libShowAll = false;
+async function renderLib(id) {
+  const lib = await DB.get('libs', id); if (!lib) return go('libs', null, true);
+  const tiles = (await DB.byLib(id)).sort((a, b) => a.created - b.created);
+  revokeURLs();
+  const lim = libShowAll ? tiles.length : Math.min(tiles.length, 400);
+  $('title').textContent = lib.name;
+  let html = '<div class="screen"><div class="card"><div class="row sp"><div><b style="font-size:18px">' + esc(lib.name) + '</b><br><small class="muted">' + esc(T('nPhotos', { n: nf(tiles.length) })) + '</small></div><button class="btn ghost sm" id="lbEdit" type="button">✏️ ' + esc(T('edit')) + '</button></div>' +
+    '<div class="row" style="margin-top:12px"><button class="btn primary sm" id="lbAdd" type="button">➕ ' + esc(T('addPhotos')) + '</button>' +
+    (!isCoarse() ? '<button class="btn ghost sm" id="lbDir" type="button">📁 ' + esc(T('addFolder')) + '</button>' : '') +
+    (tiles.length ? '<button class="btn ghost sm" id="lbSel" type="button">' + (libSel ? '✓ ' + esc(T('doneSelecting')) : '☑️ ' + esc(T('selectToRemove'))) + '</button>' : '') +
+    '<button class="btn sm" id="lbUse" type="button">🧩 ' + esc(T('useForMosaic')) + '</button></div>' +
+    (libSel ? '<div class="row" style="margin-top:10px"><span class="muted" id="selN">' + esc(T('selectedN', { n: nf(libSel.size) })) + '</span><button class="btn danger sm" id="lbRemove" type="button">🗑 ' + esc(T('remove')) + '</button></div>' : '') +
+    '<div class="note">' + esc(T('libTip')) + '</div></div>';
+  if (!tiles.length) html += '<div class="empty"><span class="em">🖼️</span>' + esc(T('libEmpty')) + '</div>';
+  else {
+    html += '<div class="thumbs">' + tiles.slice(0, lim).map(t => '<button type="button" data-t="' + t.id + '" class="' + (libSel && libSel.has(t.id) ? 'sel' : '') + '" aria-label="' + esc(T('photo')) + '"><img loading="lazy" alt="" src="' + trackURL(URL.createObjectURL(t.mini)) + '"></button>').join('') + '</div>';
+    if (lim < tiles.length) html += '<div class="row" style="justify-content:center;margin-top:12px"><button class="btn ghost" id="lbAll" type="button">' + esc(T('showAllN', { n: nf(tiles.length) })) + '</button></div>';
+  }
+  $('main').innerHTML = html + '</div>';
+  const add = async k => { const f = await pickFiles(k); if (!f.length) return; await importToLib(id, f); renderLib(id); };
+  $('lbAdd').onclick = () => add('many'); if ($('lbDir')) $('lbDir').onclick = () => add('dir');
+  $('lbEdit').onclick = () => editLibDialog(id, async () => { if (await DB.get('libs', id)) renderLib(id); else go('libs', null, true); });
+  $('lbUse').onclick = () => { S.mosaic.lib = id; saveS(); go('mosaic'); };
+  if ($('lbAll')) $('lbAll').onclick = () => { libShowAll = true; renderLib(id); };
+  if ($('lbSel')) $('lbSel').onclick = () => { libSel = libSel ? null : new Set(); renderLib(id); };
+  if ($('lbRemove')) $('lbRemove').onclick = async () => {
+    if (!libSel.size) return;
+    if (!await confirmBox(T('removeQ', { n: nf(libSel.size) }), T('remove'), true)) return;
+    await DB.delTiles([...libSel]); libSel = null; await refreshLibCount(id); toast(T('deleted')); renderLib(id);
+  };
+  document.querySelectorAll('.thumbs [data-t]').forEach(b => b.onclick = () => {
+    if (!libSel) { libSel = new Set([b.dataset.t]); renderLib(id); return; }
+    libSel.has(b.dataset.t) ? libSel.delete(b.dataset.t) : libSel.add(b.dataset.t);
+    b.classList.toggle('sel'); if ($('selN')) $('selN').textContent = T('selectedN', { n: nf(libSel.size) });
+  });
+}
+
+/* ── gallery ── */
+async function editGalDialog(id, after) {
+  const it = await DB.get('gallery', id); if (!it) return;
+  const m = openModal({
+    title: T('editItem'),
+    html: '<label class="f" for="egName">' + esc(T('name')) + '</label><input type="text" id="egName" maxlength="60" value="' + esc(it.name) + '">' +
+      '<p class="small muted">' + esc(df(it.created)) + ' · ' + nf(it.W) + '×' + nf(it.H) + '</p><button class="btn danger sm" id="egDel" type="button">🗑 ' + esc(T('delete')) + '</button>',
+    actions: [{ label: T('cancel'), cls: 'ghost' }, { label: T('save'), cls: 'primary', onClick: async () => { it.name = $('egName').value.trim() || it.name; await DB.put('gallery', it); after && after(); } }]
+  });
+  $('egDel').onclick = async () => {
+    if (!await confirmBox(T('deleteItemQ'), T('delete'), true)) return;
+    await DB.del('gallery', id); m.close(); toast(T('deleted')); after && after(true);
+  };
+}
+async function renderGallery() {
+  const items = (await DB.all('gallery')).sort((a, b) => b.created - a.created);
+  let html = '<div class="screen">';
+  if (!items.length) html += '<div class="empty"><span class="em">🗂️</span>' + esc(T('galEmpty')) + '</div><button class="btn primary big" type="button" data-go="mosaic">🧩 ' + esc(T('makeMosaic')) + '</button>';
+  else html += '<p class="muted small">' + esc(T('galNote')) + '</p><div class="gal">' + items.map(it => '<div class="lib" role="button" tabindex="0" data-g="' + it.id + '"><div class="cov"><img alt="" src="' + trackURL(URL.createObjectURL(it.thumb || it.blob)) + '"></div><div class="meta"><b>' + (it.kind === 'mosaic' ? '🧩 ' : '🖼️ ') + esc(it.name) + '</b><small>' + esc(df(it.created)) + '</small></div><button class="ed" type="button" data-ed="' + it.id + '" aria-label="' + esc(T('edit')) + '">✏️</button></div>').join('') + '</div>';
+  $('main').innerHTML = html + '</div>';
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
+  document.querySelectorAll('[data-g]').forEach(el => {
+    el.onclick = e => { if (e.target.closest('[data-ed]')) return; go('view', el.dataset.g); };
+    el.onkeydown = e => { if (e.key === 'Enter') go('view', el.dataset.g); };
+    onLongPress(el, () => editGalDialog(el.dataset.g, renderGallery));
+  });
+  document.querySelectorAll('[data-ed]').forEach(b => b.onclick = e => { e.stopPropagation(); editGalDialog(b.dataset.ed, renderGallery); });
+}
+async function renderViewer(id) {
+  const it = await DB.get('gallery', id); if (!it) return go('gallery', null, true);
+  $('title').textContent = it.name;
+  const ext = it.fmt === 'png' ? 'png' : 'jpg', fname = 'CollageNest-' + (it.kind || 'image') + '-' + id + '.' + ext;
+  $('main').innerHTML = '<div class="screen viewer"><img alt="' + esc(it.name) + '" src="' + trackURL(URL.createObjectURL(it.blob)) + '">' +
+    '<p class="muted small" style="text-align:center">' + esc(df(it.created)) + ' · ' + nf(it.W) + '×' + nf(it.H) + ' · ' + ext.toUpperCase() + '</p>' +
+    '<div class="row" style="justify-content:center"><button class="btn primary" id="vDl" type="button">⬇️ ' + esc(T('download')) + '</button><button class="btn" id="vSh" type="button">📤 ' + esc(T('share')) + '</button><button class="btn ghost" id="vEd" type="button">✏️ ' + esc(T('edit')) + '</button></div></div>';
+  $('vDl').onclick = () => downloadBlob(it.blob, fname);
+  $('vSh').onclick = () => shareBlob(it.blob, fname);
+  $('vEd').onclick = () => editGalDialog(id, gone => gone ? history.back() : renderViewer(id));
+}
+
+/* ── settings ── */
+async function storageInfo() {
+  let persisted = null, est = null;
+  try { if (navigator.storage && navigator.storage.persisted) persisted = await navigator.storage.persisted(); } catch (e) {}
+  try { if (navigator.storage && navigator.storage.estimate) est = await navigator.storage.estimate(); } catch (e) {}
+  return { persisted, est };
+}
+const mb = b => nf(Math.round(b / 1048576 * 10) / 10) + ' MB';
+async function renderSettings() {
+  const si = await storageInfo();
+  $('main').innerHTML = '<div class="screen">' +
+    '<div class="card"><h3>👤 ' + esc(T('profile')) + '</h3><label class="f" for="sName">' + esc(T('userName')) + '</label><input type="text" id="sName" maxlength="40" value="' + esc(S.name) + '" placeholder="' + esc(T('userNamePh')) + '"><div class="small muted" style="margin-top:6px">' + esc(T('userNameHint')) + '</div></div>' +
+    '<div class="card"><h3>🌐 ' + esc(T('language')) + ' · 🎨 ' + esc(T('look')) + '</h3><select id="sLang" aria-label="' + esc(T('language')) + '">' + Object.keys(LANG).map(k => '<option value="' + k + '"' + (S.lang === k ? ' selected' : '') + '>' + esc(LANG[k].langName) + '</option>').join('') + '</select>' +
+    '<div class="row" style="margin-top:12px"><button class="btn" id="sTheme" type="button">🎨 ' + esc(T('chooseTheme')) + '</button></div>' +
+    '<div class="sw"><span>' + esc(T('dayMode')) + '</span><label class="toggle"><input type="checkbox" id="sDay" ' + (S.mode === 'day' ? 'checked' : '') + ' aria-label="' + esc(T('dayMode')) + '"><span></span></label></div></div>' +
+    '<div class="card"><h3>⬇️ ' + esc(T('exportDefaults')) + '</h3><div class="seg" id="sFmt">' + ['jpg', 'png'].map(f => '<button type="button" data-v="' + f + '" class="' + (S.fmt === f ? 'on' : '') + '">' + f.toUpperCase() + '</button>').join('') + '</div>' +
+    '<div class="sw" style="margin-top:8px"><span>' + esc(T('addSignature')) + '<br><small class="muted">' + esc(T('signHint')) + '</small></span><label class="toggle"><input type="checkbox" id="sSign" ' + (S.sign ? 'checked' : '') + ' aria-label="' + esc(T('addSignature')) + '"><span></span></label></div></div>' +
+    '<div class="card"><h3>💾 ' + esc(T('dataBackup')) + '</h3><div class="kv"><b>' + esc(T('storage')) + '</b><span>' + esc(si.persisted ? T('persistYes') : si.persisted === false ? T('persistNo') : T('unknown')) + '</span>' +
+    (si.est ? '<b>' + esc(T('used')) + '</b><span>' + mb(si.est.usage || 0) + (si.est.quota ? ' / ' + mb(si.est.quota) : '') + '</span>' : '') + '</div>' +
+    '<div class="note">' + esc(T('backupNote')) + '</div>' +
+    '<div class="row"><button class="btn" id="sBk1" type="button">📄 ' + esc(T('backupSettings')) + '</button><button class="btn" id="sBk2" type="button">📦 ' + esc(T('backupFull')) + '</button><button class="btn ghost" id="sRestore" type="button">♻️ ' + esc(T('restore')) + '</button></div></div>' +
+    '<div class="card"><h3>❓ ' + esc(T('help')) + '</h3><div class="row"><button class="btn ghost" type="button" data-go="guide">📖 ' + esc(T('scr_guide')) + '</button><button class="btn ghost" id="sOnb" type="button">👋 ' + esc(T('replayIntro')) + '</button><button class="btn ghost" type="button" data-go="diag">🩺 ' + esc(T('scr_diag')) + '</button><button class="btn ghost" type="button" data-go="about">ℹ️ ' + esc(T('scr_about')) + '</button></div></div>' +
+    '<div class="card"><h3>⚠️ ' + esc(T('dangerZone')) + '</h3><button class="btn danger" id="sWipe" type="button">🗑 ' + esc(T('deleteAll')) + '</button></div>' +
+    '<span class="badge"><b>AppNest</b> · CollageNest v' + APP_VERSION + '</span></div>';
+  let nt = 0;
+  $('sName').oninput = e => { clearTimeout(nt); nt = setTimeout(() => { S.name = e.target.value.trim(); saveS(); }, 300); };
+  $('sLang').onchange = e => setLang(e.target.value);
+  $('sTheme').onclick = themePicker;
+  $('sDay').onchange = e => { S.mode = e.target.checked ? 'day' : 'night'; saveS(); applyTheme(); };
+  $('sFmt').querySelectorAll('button').forEach(b => b.onclick = () => { S.fmt = b.dataset.v; saveS(); $('sFmt').querySelectorAll('button').forEach(z => z.classList.toggle('on', z === b)); });
+  $('sSign').onchange = e => { S.sign = e.target.checked; saveS(); if (S.sign && !S.name) toast(T('signNeedsName')); };
+  $('sBk1').onclick = () => backup(false); $('sBk2').onclick = () => backup(true); $('sRestore').onclick = restore;
+  $('sOnb').onclick = onboarding;
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
+  $('sWipe').onclick = wipeAll;
+}
+
+/* ── backup / restore ── */
+function blobToDataURL(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); }); }
+function dataURLToBlob(u) {
+  const i = u.indexOf(','), meta = u.slice(5, i), bin = atob(u.slice(i + 1)), arr = new Uint8Array(bin.length);
+  for (let k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
+  return new Blob([arr], { type: meta.split(';')[0] || 'image/jpeg' });
+}
+async function backup(full) {
+  const head = { app: 'CollageNest', v: APP_VERSION, type: full ? 'full' : 'settings', date: new Date().toISOString(), user: S.name || '', settings: Object.assign({}, S, { onboarded: true }) };
+  const parts = [JSON.stringify(head).slice(0, -1)];
+  if (full) {
+    const libs = await DB.all('libs'), p = Prog.show(T('backingUp'), true);
+    const total = libs.reduce((s, l) => s + (l.count || 0), 0) || 1; let done = 0;
+    parts.push(',"libs":[');
+    for (let li = 0; li < libs.length; li++) {
+      if (p.cancelled) { p.close(); toast(T('cancelled')); return; }
+      const tiles = await DB.byLib(libs[li].id);
+      parts.push((li ? ',' : '') + '{"lib":' + JSON.stringify(libs[li]) + ',"tiles":[');
+      for (let k = 0; k < tiles.length; k++) {
+        const t = tiles[k];
+        parts.push((k ? ',' : '') + JSON.stringify({ id: t.id, sig: t.sig, w: t.w, h: t.h, created: t.created, blob: await blobToDataURL(t.blob), mini: await blobToDataURL(t.mini) }));
+        done++; if (done % 30 === 0) p.set(done / total, nf(done) + ' / ' + nf(total));
+      }
+      parts.push(']}');
+    }
+    parts.push(']');
+    p.close();
+  }
+  parts.push('}');
+  const blob = new Blob(parts, { type: 'application/json' });
+  downloadBlob(blob, 'CollageNest-' + (full ? 'full' : 'settings') + '-backup-' + fileStamp() + '.json');
+  toast(T('backupDone', { s: mb(blob.size) }));
+}
+async function restore() {
+  const f = (await pickFiles('json'))[0]; if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch (e) { toast(T('restoreBad'), true); return; }
+  if (!data || data.app !== 'CollageNest' || !data.settings) { toast(T('restoreBad'), true); return; }
+  const full = data.type === 'full' && Array.isArray(data.libs);
+  if (!await confirmBox(full ? T('restoreFullQ') : T('restoreSetQ'), T('restore'), true)) return;
+  S = Object.assign({}, DEF_S, data.settings); S.mosaic = Object.assign({}, DEF_S.mosaic, S.mosaic || {}); S.collage = Object.assign({}, DEF_S.collage, S.collage || {}); S.onboarded = true; saveS();
+  if (full) {
+    const p = Prog.show(T('restoring'), false);
+    await DB.clear('tiles'); await DB.clear('libs'); LibCache.drop(); MS = null;
+    for (let li = 0; li < data.libs.length; li++) {
+      const L = data.libs[li]; await DB.put('libs', L.lib);
+      const recs = (L.tiles || []).map(t => ({ id: t.id, libId: L.lib.id, sig: t.sig, w: t.w, h: t.h, created: t.created, blob: dataURLToBlob(t.blob), mini: dataURLToBlob(t.mini) }));
+      for (let k = 0; k < recs.length; k += 50) { await DB.putMany('tiles', recs.slice(k, k + 50)); p.set((li + k / Math.max(1, recs.length)) / data.libs.length); }
+      await refreshLibCount(L.lib.id);
+    }
+    p.close();
+  }
+  applyLang(); toast(T('restored')); go('home', null, true);
+}
+async function wipeAll() {
+  if (!await confirmBox(T('deleteAllQ1'), T('continue'), true)) return;
+  if (!await confirmBox(T('deleteAllQ2'), T('deleteAll'), true)) return;
+  await DB.clear('tiles'); await DB.clear('libs'); await DB.clear('gallery');
+  Store.clearAll(); LibCache.drop(); MS = null; CS = null;
+  S = JSON.parse(JSON.stringify(DEF_S)); S.lang = detectLang();
+  applyLang(); toast(T('allDeleted')); go('home', null, true); setTimeout(onboarding, 400);
+}
+
+/* ── guide / onboarding ── */
+const GUIDE = [['👋', 'g1t', 'g1'], ['🧩', 'g2t', 'g2'], ['📚', 'g3t', 'g3'], ['🔍', 'g4t', 'g4'], ['🖼️', 'g5t', 'g5'], ['🔒', 'g6t', 'g6']];
+function onboarding() {
+  let i = 0;
+  const draw = () => '<div class="guide-em">' + GUIDE[i][0] + '</div><h3 style="text-align:center">' + esc(T(GUIDE[i][1])) + '</h3><p style="text-align:center" class="muted">' + esc(T(GUIDE[i][2])) + '</p><div class="steps">' + GUIDE.map((g, k) => '<i class="' + (k === i ? 'on' : '') + '"></i>').join('') + '</div>' +
+    '<div class="acts"><button class="btn ghost" id="obSkip" type="button">' + esc(T('skip')) + '</button>' + (i ? '<button class="btn ghost" id="obPrev" type="button">' + esc(T('prev')) + '</button>' : '') + '<button class="btn primary" id="obNext" type="button">' + esc(i === GUIDE.length - 1 ? T('start') : T('next')) + '</button></div>';
+  const m = openModal({ center: true, html: draw(), onClose: () => { S.onboarded = true; saveS(); } });
+  const bind = () => {
+    $('obSkip').onclick = () => m.close();
+    if ($('obPrev')) $('obPrev').onclick = () => { i--; m.body.innerHTML = draw(); bind(); };
+    $('obNext').onclick = () => { if (i === GUIDE.length - 1) { m.close(); return; } i++; m.body.innerHTML = draw(); bind(); $('obNext').focus(); };
+  };
+  bind();
+}
+function renderGuide() {
+  $('main').innerHTML = '<div class="screen">' + GUIDE.map(g => '<div class="card"><h3>' + g[0] + ' ' + esc(T(g[1])) + '</h3><p class="muted" style="margin:0">' + esc(T(g[2])) + '</p></div>').join('') +
+    '<div class="card"><h3>💡 ' + esc(T('tipsTitle')) + '</h3><ul class="muted" style="margin:0;padding-inline-start:20px">' + ['tip1', 'tip2', 'tip3', 'tip4', 'tip5', 'tip6'].map(k => '<li style="margin-bottom:6px">' + esc(T(k)) + '</li>').join('') + '</ul></div>' +
+    '<button class="btn primary big" id="gStart" type="button">👋 ' + esc(T('replayIntro')) + '</button></div>';
+  $('gStart').onclick = onboarding;
+}
+
+/* ── about ── */
+function renderAbout() {
+  const url = location.href.split('#')[0].split('?')[0];
+  $('main').innerHTML = '<div class="screen"><div class="hero"><img class="logo" src="icon-192.png" alt=""><h2><span>Collage</span>Nest</h2><p>' + esc(T('version')) + ' ' + APP_VERSION + '</p></div>' +
+    '<div class="card"><div class="kv"><b>' + esc(T('version')) + '</b><span>' + APP_VERSION + '</span><b>' + esc(T('developer')) + '</b><span>Barak Aflalo</span><b>' + esc(T('platform')) + '</b><span>PWA · HTML5</span><b>' + esc(T('storage')) + '</b><span>' + esc(T('onDeviceOnly')) + '</span><b>' + esc(T('license')) + '</b><span>© AppNest 2026</span></div></div>' +
+    '<div class="card"><div class="row" style="flex-direction:column;align-items:stretch">' +
+    '<a class="btn" href="' + STORE_URL + '" target="_blank" rel="noopener">🏪 ' + esc(T('storeLink')) + '</a>' +
+    '<button class="btn" id="aShare" type="button">📤 ' + esc(T('shareApp')) + '</button>' +
+    '<a class="btn" href="mailto:' + FEEDBACK_MAIL + '?subject=' + encodeURIComponent('CollageNest ' + APP_VERSION) + '">✉️ ' + esc(T('feedback')) + '</a>' +
+    '<button class="btn ghost" type="button" data-go="guide">📖 ' + esc(T('scr_guide')) + '</button>' +
+    '<a class="btn ghost" href="privacy_policy.html" target="_blank" rel="noopener">🔒 ' + esc(T('privacy')) + '</a></div></div>' +
+    '<div class="note">' + esc(T('disclaimer')) + '</div><span class="badge"><b>AppNest</b> · CollageNest v' + APP_VERSION + '</span></div>';
+  $('aShare').onclick = async () => {
+    const text = T('shareAppText') + (S.name ? ' — ' + S.name : '');
+    try { if (navigator.share) { await navigator.share({ title: 'CollageNest', text, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(url); toast(T('linkCopied')); } catch (e) { toast(url); }
+  };
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
+}
+
+/* ── diagnostics (no photos, no personal content) ── */
+async function diagReport() {
+  const si = await storageInfo();
+  let errs = []; try { errs = JSON.parse(localStorage.getItem('cn_errors') || '[]'); } catch (e) {}
+  const libs = await DB.all('libs'), gal = await DB.all('gallery');
+  const sw = 'serviceWorker' in navigator ? (navigator.serviceWorker.controller ? 'active' : 'registered/none') : 'unsupported';
+  const L = [
+    'CollageNest ' + APP_VERSION + ' · ' + new Date().toISOString(),
+    'URL: ' + location.origin + location.pathname,
+    'UA: ' + navigator.userAgent,
+    'Lang: ' + S.lang + ' · Theme: ' + S.theme + '/' + S.mode,
+    'Screen: ' + screen.width + 'x' + screen.height + ' @' + (devicePixelRatio || 1) + ' · pointer: ' + (isCoarse() ? 'coarse' : 'fine'),
+    'CPU cores: ' + (navigator.hardwareConcurrency || '?') + ' · RAM(GB): ' + (navigator.deviceMemory || '?'),
+    'IndexedDB: ' + (DB.isMem() ? 'NO (memory fallback)' : 'ok') + ' · localStorage: ' + (Store.ok() ? 'ok' : 'NO'),
+    'Storage persisted: ' + si.persisted + (si.est ? ' · used ' + mb(si.est.usage || 0) + ' / ' + mb(si.est.quota || 0) : ''),
+    'Service Worker: ' + sw + ' · online: ' + navigator.onLine,
+    'OffscreenCanvas: ' + (typeof OffscreenCanvas !== 'undefined') + ' · createImageBitmap: ' + (typeof createImageBitmap === 'function') + ' · Worker: ' + (typeof Worker !== 'undefined'),
+    'Share files: ' + !!(navigator.canShare) + ' · crossOriginIsolated: ' + !!self.crossOriginIsolated,
+    'Libraries: ' + libs.length + ' · tiles: ' + libs.reduce((s, l) => s + (l.count || 0), 0) + ' · gallery: ' + gal.length,
+    'Mosaic session: ' + (MS ? MS.cols + 'x' + MS.rows + ' / ' + MS.N + ' tiles' : 'none'),
+    '— Last errors (' + errs.length + ') —'
+  ].concat(errs.map(e => e.t + ' ' + e.m + (e.s ? ' @' + e.s + ':' + e.l : '')));
+  return L.join('\n');
+}
+async function renderDiag() {
+  const rep = await diagReport();
+  $('main').innerHTML = '<div class="screen"><p class="muted">' + esc(T('diagIntro')) + '</p><pre class="diag" id="dRep">' + esc(rep) + '</pre>' +
+    '<div class="row"><button class="btn primary" id="dCopy" type="button">📋 ' + esc(T('copy')) + '</button><a class="btn" id="dMail" href="mailto:' + FEEDBACK_MAIL + '?subject=' + encodeURIComponent('CollageNest diagnostics') + '&body=' + encodeURIComponent(rep.slice(0, 1800)) + '">✉️ ' + esc(T('sendReport')) + '</a>' +
+    '<button class="btn ghost" id="dClr" type="button">🧹 ' + esc(T('clearErrors')) + '</button><button class="btn ghost" id="dPersist" type="button">🔒 ' + esc(T('askPersist')) + '</button></div></div>';
+  $('dCopy').onclick = async () => { try { await navigator.clipboard.writeText(rep); toast(T('copied')); } catch (e) { toast(T('copyFail'), true); } };
+  $('dClr').onclick = () => { try { localStorage.removeItem('cn_errors'); } catch (e) {} renderDiag(); };
+  $('dPersist').onclick = async () => { const ok = await requestPersist(); toast(ok ? T('persistYes') : T('persistNo'), !ok); renderDiag(); };
+}
+async function requestPersist() { try { if (navigator.storage && navigator.storage.persist) return await navigator.storage.persist(); } catch (e) {} return false; }
+
+/* ── service worker ── */
+function registerSW() {
+  if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol) || /[?&]nosw\b/.test(location.search)) return;
+  navigator.serviceWorker.register('sw.js').catch(e => logErr('sw: ' + e.message));
+}
+
+/* ── init ── */
+(async function init() {
+  applyLang();
+  $('themeBtn').onclick = themePicker;
+  $('modeBtn').onclick = () => { S.mode = S.mode === 'day' ? 'night' : 'day'; saveS(); applyTheme(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modalStack.length && cur.s !== 'home' && !Prog.cur) history.back(); });
+  await DB.open();
+  const st = history.state && history.state.s ? history.state : { s: 'home', a: null };
+  history.replaceState(st, '');
+  await show(st);
+  if (!S.onboarded) onboarding();
+  registerSW();
+  requestPersist();
+  window.__CN_READY = true;
+})();
+
+</script>
+</body>
+</html>
