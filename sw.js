@@ -27,7 +27,7 @@
    - CDN libraries (heic2any, face-api): cache-first in a separate vendor cache
    - share target: POST ./share-target → photos parked in cache 'collagenest-share' → redirect to ./?shared=N
    Bump VERSION on every update. */
-var VERSION = '1.3.0';
+var VERSION = '1.4.0';
 var APP_CACHE = 'collagenest-app-' + VERSION;
 var VENDOR_CACHE = 'collagenest-vendor-v1';
 var SHELL = ['./', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html'];

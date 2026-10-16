@@ -222,7 +222,7 @@ pre.diag{white-space:pre-wrap;word-break:break-all;background:var(--bg3);border:
 <script>
 /* ═══ CollageNest · AppNest — core (storage, i18n helpers, UI shell) ═══ */
 'use strict';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const STORE_URL = 'https://appnest-store.pages.dev';
 const FEEDBACK_MAIL = 'appnest55@gmail.com';
 
@@ -333,14 +333,18 @@ function detectLang() {
 }
 const DEF_S = {
   lang: detectLang(), theme: 'gold', mode: 'night', name: '', fmt: 'jpg', onboarded: false,
-  mosaic: { cols: 50, aspect: '1:1', variety: 'med', flip: true, tint: 20, overlay: 0, grout: 0, groutColor: '#000000', shape: 'square', size: '4k' },
+  mosaic: { cols: 50, aspect: '1:1', variety: 'med', flip: true, tint: 20, overlay: 0, grout: 0, groutColor: '#000000', shape: 'square', size: '4k', outline: 'none', outlineText: '50', shapeBg: '#ffffff' },
   collage: { ratio: '1:1', gap: 2, radius: 2, bg: '#ffffff', size: 3072 },
-  auto: { count: 0, ratio: '4:3', faces: true, size: '2k', style: 'blend' }
+  auto: { count: 0, ratio: '4:3', faces: true, size: '2k', style: 'blend' },
+  words: { text: '', size: 2.6, font: 'sans', bg: '#0b0b0c', boost: 1.35, exSize: '4k' },
+  print: { paper: 'a4', orient: 'port', cols: 3 },
+  video: { fmt: '1:1', dur: 8 }
 };
 let S = Object.assign({}, DEF_S, Store.get('settings', {}));
 S.mosaic = Object.assign({}, DEF_S.mosaic, S.mosaic || {});
 S.collage = Object.assign({}, DEF_S.collage, S.collage || {});
 S.auto = Object.assign({}, DEF_S.auto, S.auto || {});
+['words', 'print', 'video'].forEach(k => { S[k] = Object.assign({}, DEF_S[k], S[k] || {}); });
 function saveS() { Store.set('settings', S); }
 
 /* ── i18n ── */
@@ -620,6 +624,26 @@ function cropToAspect(bw, bh, a) {
   if (bw / bh > a) { const sw = bh * a; return [(bw - sw) / 2, 0, sw, bh]; }
   const sh = bw / a; return [0, (bh - sh) / 2, bw, sh];
 }
+/* crop to aspect a around a point of interest (cx,cy ∈ 0..1) — "smart crop" of tiles */
+function cropAt(bw, bh, a, cx, cy) {
+  const [, , sw, sh] = cropToAspect(bw, bh, a);
+  return [clamp(cx * bw - sw / 2, 0, bw - sw), clamp(cy * bh - sh / 2, 0, bh - sh), sw, sh];
+}
+/* cheap point of interest for a tile: centroid of colour distinctiveness + centre bias */
+function interestPoint(b, cv) {
+  const S2 = 16, x = cv.getContext('2d', { willReadFrequently: true });
+  x.clearRect(0, 0, S2, S2); x.drawImage(b, 0, 0, S2, S2);
+  const d = x.getImageData(0, 0, S2, S2).data; let mr = 0, mg = 0, mb = 0;
+  for (let i = 0; i < d.length; i += 4) { mr += d[i]; mg += d[i + 1]; mb += d[i + 2]; }
+  const n = S2 * S2; mr /= n; mg /= n; mb /= n;
+  let sw = 0, sx = 0, sy = 0;
+  for (let y = 0; y < S2; y++) for (let xx = 0; xx < S2; xx++) {
+    const i = (y * S2 + xx) * 4, dx = (xx + 0.5) / S2 - 0.5, dy = (y + 0.5) / S2 - 0.5;
+    const w = (Math.abs(d[i] - mr) + Math.abs(d[i + 1] - mg) + Math.abs(d[i + 2] - mb) + 8) * (1 - 1.2 * (dx * dx + dy * dy));
+    sw += w; sx += w * (xx + 0.5) / S2; sy += w * (y + 0.5) / S2;
+  }
+  return [clamp(sx / sw, 0.3, 0.7), clamp(sy / sw, 0.3, 0.7)];
+}
 const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, 'hex': Math.sqrt(3) / 2 };
 
 /* ── tile records (Blob ≤256px + mini ≤64px) ── */
@@ -754,7 +778,7 @@ async function makeDemoMain() {
 /* ── library cache (decoded minis per library) ── */
 const LibCache = {
   id: null, tiles: null, minis: null,
-  drop(id) { if (!id || this.id === id) { if (this.minis) this.minis.forEach(b => { try { b.close(); } catch (e) {} }); this.id = null; this.tiles = null; this.minis = null; } },
+  drop(id) { if (!id || this.id === id) { if (this.minis) this.minis.forEach(b => { try { b.close(); } catch (e) {} }); this.id = null; this.tiles = null; this.minis = null; this.tc = null; } },
   async load(libId, p) {
     if (this.id === libId && this.tiles) return this;
     this.drop();
@@ -771,19 +795,21 @@ const LibCache = {
     await Promise.all([run(), run(), run(), run()]);
     const keep = []; const km = [];
     tiles.forEach((t, k) => { if (minis[k]) { keep.push(t); km.push(minis[k]); } });
-    this.id = libId; this.tiles = keep; this.minis = km;
+    const tc = new Float32Array(km.length * 2), cv = mkCanvas(16, 16);
+    km.forEach((b, k) => { const [cx, cy] = interestPoint(b, cv); tc[k * 2] = cx; tc[k * 2 + 1] = cy; });
+    this.id = libId; this.tiles = keep; this.minis = km; this.tc = tc;
     return this;
   }
 };
 
 /* tile features for a given cell aspect (+ mirrored copies) */
-async function tileFeatures(minis, a, allowFlip) {
+async function tileFeatures(minis, a, allowFlip, tc) {
   const N = minis.length, M = allowFlip ? N * 2 : N;
   const feats = new Float32Array(M * FD), tileOf = new Int32Array(M), flipOf = new Uint8Array(M);
   const c = mkCanvas(24, 24), x = c.getContext('2d', { willReadFrequently: true });
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
   for (let i = 0; i < N; i++) {
-    const b = minis[i], [sx, sy, sw, sh] = cropToAspect(b.width, b.height, a);
+    const b = minis[i], [sx, sy, sw, sh] = tc ? cropAt(b.width, b.height, a, tc[i * 2], tc[i * 2 + 1]) : cropToAspect(b.width, b.height, a);
     x.clearRect(0, 0, 24, 24); x.drawImage(b, sx, sy, sw, sh, 0, 0, 24, 24);
     blockFeatures(x.getImageData(0, 0, 24, 24).data, 24, 24, feats, i * FD);
     tileOf[i] = i;
@@ -847,7 +873,7 @@ function targetFeatures(main, g) {
 
 /* ── matcher (runs in a Worker; same function is the main-thread fallback) ── */
 function matchCore(d, onProg) {
-  const { tf, tileOf, N, cf, C, cols, maxRep, R, seed } = d;
+  const { tf, tileOf, N, cf, C, cols, maxRep, R, seed, mask } = d;
   const D = 27, M = tileOf.length, K = Math.min(M, 40);
   let s = seed >>> 0 || 1; const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
   const order = new Int32Array(C); for (let i = 0; i < C; i++) order[i] = i;
@@ -864,7 +890,8 @@ function matchCore(d, onProg) {
     return dd;
   };
   for (let ci = 0; ci < C; ci++) {
-    const c = order[ci], base = c * D, cx = c % cols, cy = (c / cols) | 0;
+    const c = order[ci]; if (mask && !mask[c]) continue;
+    const base = c * D, cx = c % cols, cy = (c / cols) | 0;
     let cnt = 0;
     for (let e = 0; e < M; e++) {
       const lim = cnt === K ? topD[K - 1] : Infinity;
@@ -923,7 +950,7 @@ function drawCell(x, m, i, px, py, w, h, bmp, st, FW, FH) {
   const e = m.assign[i]; if (e < 0 || !bmp) return;
   const g = st.grout > 0 ? Math.max(0.5, st.grout * Math.min(w, h) / 60) : 0;
   const X = px + g / 2, Y = py + g / 2, W = w - g, H = h - g;
-  const [sx, sy, sw, sh] = cropToAspect(bmp.width, bmp.height, m.a);
+  const t = m.tileOf[e], [sx, sy, sw, sh] = m.tc ? cropAt(bmp.width, bmp.height, m.a, m.tc[t * 2], m.tc[t * 2 + 1]) : cropToAspect(bmp.width, bmp.height, m.a);
   x.save();
   if (m.hex || st.shape !== 'square') { cellPath(x, m, X, Y, W, H, st); x.clip(); }
   if (m.flipOf[e]) { x.save(); x.translate(X + W, Y); x.scale(-1, 1); x.drawImage(bmp, sx, sy, sw, sh, 0, 0, W, H); x.restore(); }
@@ -936,6 +963,7 @@ function drawCell(x, m, i, px, py, w, h, bmp, st, FW, FH) {
   x.restore();
 }
 function paintBackground(x, W, H, st, m) {
+  if (m && m.mask) { x.fillStyle = st.shapeBg || '#ffffff'; x.fillRect(0, 0, W, H); return; }
   x.fillStyle = (st.grout > 0 || st.shape !== 'square' || (m && m.hex)) ? st.groutColor : '#000';
   x.fillRect(0, 0, W, H);
 }
@@ -974,7 +1002,7 @@ async function renderExport(m, st, long, p, sign) {
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
   paintBackground(x, d.W, d.H, st, m);
   const byTile = new Map();
-  for (let i = 0; i < m.assign.length; i++) { const t = m.tileOf[m.assign[i]]; if (!byTile.has(t)) byTile.set(t, []); byTile.get(t).push(i); }
+  for (let i = 0; i < m.assign.length; i++) { if (m.assign[i] < 0) continue; const t = m.tileOf[m.assign[i]]; if (!byTile.has(t)) byTile.set(t, []); byTile.get(t).push(i); }
   let k = 0; const n = byTile.size;
   for (const [t, cells] of byTile) {
     if (p && p.cancelled) throw new Error('cancel');
@@ -1076,6 +1104,12 @@ async function renderMosaicSetup() {
     '<label class="f">' + esc(T('variety')) + '</label><div class="seg" data-k="variety">' +
     ['low', 'med', 'high'].map(v => '<button type="button" data-v="' + v + '" class="' + (m.variety === v ? 'on' : '') + '">' + esc(T('var_' + v)) + '</button>').join('') + '</div>' +
     '<div class="small muted" style="margin-top:6px">' + esc(T('varietyHint')) + '</div>' +
+    '<label class="f">' + esc(T('outline')) + '</label><div class="seg" data-k="outline">' +
+    OUTLINES.map(v => '<button type="button" data-v="' + v + '" class="' + (m.outline === v ? 'on' : '') + '">' + esc(T('ol_' + v)) + '</button>').join('') + '</div>' +
+    (m.outline === 'text' ? '<label class="f" for="olText">' + esc(T('shapeText')) + '</label><input type="text" id="olText" maxlength="12" value="' + esc(m.outlineText || '') + '" placeholder="50">' : '') +
+    (m.outline !== 'none' ? '<div class="small muted" style="margin-top:6px">' + esc(Setup.main ? T('outlineWithPhoto') : T('outlineNoPhoto')) + '</div>' +
+      '<label class="f">' + esc(T('shapeBg')) + '</label><div class="swatches" id="olBg">' + ['#ffffff', '#000000', '#f3ead7', '#d4af37', '#1c2a44', '#ffe4ec'].map(c => '<button type="button" data-c="' + c + '" class="' + (m.shapeBg === c ? 'on' : '') + '" style="background:' + c + '" aria-label="' + c + '"></button>').join('') + '</div>' +
+      (Setup.main ? '<div class="row" style="margin-top:8px"><button class="btn ghost sm" id="noMain" type="button">🌈 ' + esc(T('useRainbow')) + '</button></div>' : '') : '') +
     '<div class="sw" style="margin-top:8px"><span>' + esc(T('allowFlip')) + '<br><small class="muted">' + esc(T('allowFlipHint')) + '</small></span><label class="toggle"><input type="checkbox" id="flipT" ' + (m.flip ? 'checked' : '') + ' aria-label="' + esc(T('allowFlip')) + '"><span></span></label></div></div>' +
     '<button class="btn primary big" id="makeMosaic" type="button">✨ ' + esc(T('makeMosaic')) + '</button>';
   $('main').innerHTML = '<div class="screen">' + html + '</div>';
@@ -1117,6 +1151,9 @@ async function renderMosaicSetup() {
   $('colsR').onchange = () => saveS();
   document.querySelectorAll('.seg[data-k]').forEach(sg => sg.querySelectorAll('button').forEach(b => b.onclick = () => { m[sg.dataset.k] = b.dataset.v; saveS(); renderMosaicSetup(); }));
   $('flipT').onchange = e => { m.flip = e.target.checked; saveS(); };
+  if ($('olText')) $('olText').oninput = e => { m.outlineText = e.target.value; saveS(); };
+  document.querySelectorAll('#olBg [data-c]').forEach(b => b.onclick = () => { m.shapeBg = b.dataset.c; saveS(); renderMosaicSetup(); });
+  if ($('noMain')) $('noMain').onclick = () => { if (Setup.main && !(MS && MS.main === Setup.main)) try { Setup.main.close(); } catch (e) {} Setup.main = null; Setup.mainName = ''; renderMosaicSetup(); };
   $('makeMosaic').onclick = () => createMosaic(false);
 }
 
@@ -1124,7 +1161,8 @@ async function createMosaic(reseed) {
   reseed = reseed === true && !!MS;
   const m = S.mosaic;
   if (!reseed) {
-    if (!Setup.main) { toast(T('needMain'), true); return; }
+    if (!Setup.main && m.outline === 'none') { toast(T('needMain'), true); return; }
+    if (m.outline === 'text' && !String(m.outlineText || '').trim()) { toast(T('needShapeText'), true); return; }
     const lib = m.lib && await DB.get('libs', m.lib);
     if (!lib || !lib.count) { toast(T('needLib'), true); return; }
   }
@@ -1137,16 +1175,19 @@ async function createMosaic(reseed) {
       if (!cache.tiles.length) throw new Error('empty');
       const a = ASPECTS[m.aspect];
       p.set(0.27, T('analyzing'));
-      const tf = await tileFeatures(cache.minis, a, m.flip);
+      const tf = await tileFeatures(cache.minis, a, m.flip, cache.tc);
       if (p.cancelled) throw new Error('cancel');
-      const g = gridFor(Setup.main.width, Setup.main.height, m.cols, m.aspect);
+      const synthetic = !Setup.main;
+      const main = Setup.main || await makeRainbowMain(shapeRatio(m.outline, m.outlineText));
+      const g = gridFor(main.width, main.height, m.cols, m.aspect);
       p.set(0.33, T('analyzing')); await yieldUI();
-      const tg = targetFeatures(Setup.main, g);
-      ms = { main: Setup.main, name: Setup.mainName, libId: m.lib, tiles: cache.tiles, minis: cache.minis, cols: g.cols, rows: g.rows, a, hex: g.hex, aspect: m.aspect, src: g.src,
+      const tg = targetFeatures(main, g);
+      ms = { main, synthetic, outline: m.outline, outlineText: m.outlineText, tc: cache.tc, name: synthetic ? (m.outline === 'text' ? m.outlineText : T('ol_' + m.outline)) : Setup.mainName, libId: m.lib, tiles: cache.tiles, minis: cache.minis, cols: g.cols, rows: g.rows, a, hex: g.hex, aspect: m.aspect, src: g.src,
         tf: tf.feats, tileOf: tf.tileOf, flipOf: tf.flipOf, N: tf.N, cf: tg.feats, rgb: tg.rgb, variety: m.variety };
     }
-    const C = ms.cols * ms.rows, vp = varietyParams(ms.variety, C, ms.N);
-    const assign = await runMatch({ tf: ms.tf, tileOf: ms.tileOf, N: ms.N, cf: ms.cf, C, cols: ms.cols, maxRep: vp.maxRep, R: vp.R, seed: (Math.random() * 4e9) >>> 0 }, p);
+    if (!reseed) ms.mask = makeMask(ms, ms.outline, ms.outlineText);
+    const C = ms.cols * ms.rows, vp = varietyParams(ms.variety, ms.mask ? ms.mask.count : C, ms.N);
+    const assign = await runMatch({ tf: ms.tf, tileOf: ms.tileOf, N: ms.N, cf: ms.cf, C, cols: ms.cols, maxRep: vp.maxRep, R: vp.R, seed: (Math.random() * 4e9) >>> 0, mask: ms.mask || null }, p);
     if (p.cancelled) throw new Error('cancel');
     ms.assign = assign; ms.undo = []; ms.redo = []; ms.saved = false;
     p.set(0.94, T('drawing')); await yieldUI();
@@ -1293,7 +1334,8 @@ const Ed = {
   },
   tap(px, py) {
     const m = MS, ux = (px - this.tx) / this.s, uy = (py - this.ty) / this.s;
-    const i = (ux < 0 || uy < 0 || ux > m.comp.width || uy > m.comp.height) ? -1 : cellAt(m, ux, uy, m.cw, m.ch);
+    let i = (ux < 0 || uy < 0 || ux > m.comp.width || uy > m.comp.height) ? -1 : cellAt(m, ux, uy, m.cw, m.ch);
+    if (i >= 0 && m.assign[i] < 0) i = -1; // outside the shape
     if (i < 0) { this.sel = -1; this.redraw(); return; }
     this.sel = i; this.redraw(); swapSheet(this.sel);
   },
@@ -1356,7 +1398,7 @@ function swapSheet(i) {
     md.body.querySelectorAll('canvas[data-e]:not([data-p])').forEach(c => {
       const e = +c.dataset.e, b = m.minis[m.tileOf[e]], w = 96, h = Math.round(96 / m.a);
       c.width = w; c.height = h; c.dataset.p = 1;
-      const x = c.getContext('2d'), [sx, sy, sw, sh] = cropToAspect(b.width, b.height, m.a);
+      const t = m.tileOf[e], x = c.getContext('2d'), [sx, sy, sw, sh] = m.tc ? cropAt(b.width, b.height, m.a, m.tc[t * 2], m.tc[t * 2 + 1]) : cropToAspect(b.width, b.height, m.a);
       if (m.flipOf[e]) { x.translate(w, 0); x.scale(-1, 1); }
       x.drawImage(b, sx, sy, sw, sh, 0, 0, w, h);
     });
@@ -1378,7 +1420,8 @@ function exportSheet() {
     render: (long, p) => renderExport(m, st, long, p, S.sign && !!S.name),
     kind: 'mosaic', name: () => m.name || T('mosaic'),
     thumb: () => thumbOf(m.comp, m.comp.width, m.comp.height),
-    onSaved: () => { m.saved = true; }
+    onSaved: () => { m.saved = true; },
+    extra: [{ label: '🎬 ' + T('zoomVideo'), run: videoSheet }]
   });
 }
 
@@ -1399,8 +1442,9 @@ function exportFlow(o) {
     actions: [
       { label: '⬇️ ' + T('download'), cls: 'primary', keep: true, onClick: () => run('download') },
       { label: '📤 ' + T('share'), cls: '', keep: true, onClick: () => run('share') },
-      { label: '💾 ' + T('saveGallery'), cls: '', keep: true, onClick: () => run('gallery') }
-    ]
+      { label: '💾 ' + T('saveGallery'), cls: '', keep: true, onClick: () => run('gallery') },
+      { label: '🖨️ ' + T('printWall'), cls: 'ghost', onClick: () => { setTimeout(() => printWall(o), 50); } }
+    ].concat((o.extra || []).map(a => ({ label: a.label, cls: 'ghost', onClick: () => { setTimeout(a.run, 50); } })))
   });
   md.body.querySelectorAll('#exSize button').forEach(b => b.onclick = () => { o.setSize(b.dataset.v); saveS(); md.body.querySelectorAll('#exSize button').forEach(z => z.classList.toggle('on', z === b)); });
   md.body.querySelectorAll('#exFmt button').forEach(b => b.onclick = () => { S.fmt = b.dataset.v; saveS(); md.body.querySelectorAll('#exFmt button').forEach(z => z.classList.toggle('on', z === b)); });
@@ -2286,6 +2330,7 @@ async function saveProject() {
     const rec = {
       id: m.projectId || uid(), name: name || T('mosaic'), created: old ? old.created : Date.now(), updated: Date.now(),
       libId: m.libId, cols: m.cols, aspect: m.aspect, flip: m.tileOf.length > m.N, variety: m.variety,
+      outline: m.outline || 'none', outlineText: m.outlineText || '', synthetic: !!m.synthetic,
       tileIds: m.tiles.map(t => t.id), assign: Array.from(m.assign), style: Object.assign({}, S.mosaic),
       main: m.mainBlob, thumb: await thumbOf(m.comp, m.comp.width, m.comp.height), cells: m.assign.length
     };
@@ -2301,30 +2346,32 @@ async function openProject(id) {
   try {
     const main = await createImageBitmap(rec.main);
     if (Setup.main && (!MS || MS.main !== Setup.main)) try { Setup.main.close(); } catch (e) {}
-    Setup.main = main; Setup.mainName = rec.name;
-    Object.assign(S.mosaic, rec.style || {}, { lib: rec.libId, cols: rec.cols, aspect: rec.aspect, flip: rec.flip, variety: rec.variety }); saveS();
+    if (rec.synthetic) { Setup.main = null; Setup.mainName = ''; } else { Setup.main = main; Setup.mainName = rec.name; }
+    Object.assign(S.mosaic, rec.style || {}, { lib: rec.libId, cols: rec.cols, aspect: rec.aspect, flip: rec.flip, variety: rec.variety, outline: rec.outline || 'none', outlineText: rec.outlineText || '50' }); saveS();
     const cache = await LibCache.load(rec.libId, p);
     if (!cache.tiles.length) throw new Error('empty');
     const a = ASPECTS[rec.aspect] || 1;
     p.set(0.3, T('analyzing'));
-    const tf = await tileFeatures(cache.minis, a, rec.flip);
+    const tf = await tileFeatures(cache.minis, a, rec.flip, cache.tc);
     const g = gridFor(main.width, main.height, rec.cols, rec.aspect);
     const tg = targetFeatures(main, g);
     const C = g.cols * g.rows, N = cache.tiles.length, idx = new Map(cache.tiles.map((t, i) => [t.id, i]));
     const oldN = rec.tileIds.length, assign = new Int32Array(C).fill(-1);
     let missing = 0;
+    const pm = { cols: g.cols, rows: g.rows, a, hex: g.hex }, mask = makeMask(pm, rec.outline, rec.outlineText);
     if (rec.assign.length === C) for (let c = 0; c < C; c++) {
+      if (mask && !mask[c]) continue;
       const e = rec.assign[c], flip = e >= oldN, ni = idx.get(rec.tileIds[flip ? e - oldN : e]);
       if (ni == null) { missing++; continue; }
       assign[c] = ni + (flip && rec.flip ? N : 0);
     }
-    for (let c = 0; c < C; c++) if (assign[c] < 0) { // photo was removed from the library → best remaining match
+    for (let c = 0; c < C; c++) if (assign[c] < 0 && (!mask || mask[c])) { // photo was removed from the library → best remaining match
       let best = 0, bd = Infinity; const base = c * FD;
       for (let e = 0; e < tf.M; e++) { let s = 0; const o = e * FD; for (let k = 0; k < FD; k++) { const t = tg.feats[base + k] - tf.feats[o + k]; s += t * t; } if (s < bd) { bd = s; best = e; } }
       assign[c] = best;
     }
     MS = { main, mainBlob: rec.main, name: rec.name, libId: rec.libId, tiles: cache.tiles, minis: cache.minis, cols: g.cols, rows: g.rows, a, hex: g.hex, aspect: rec.aspect, src: g.src,
-      tf: tf.feats, tileOf: tf.tileOf, flipOf: tf.flipOf, N: tf.N, cf: tg.feats, rgb: tg.rgb, variety: rec.variety, assign, undo: [], redo: [], saved: true, projectId: rec.id };
+      tf: tf.feats, tileOf: tf.tileOf, flipOf: tf.flipOf, N: tf.N, cf: tg.feats, rgb: tg.rgb, variety: rec.variety, assign, mask, tc: cache.tc, outline: rec.outline, outlineText: rec.outlineText, synthetic: rec.synthetic, undo: [], redo: [], saved: true, projectId: rec.id };
     p.set(0.95, T('drawing')); await yieldUI();
     buildComposite(MS, S.mosaic);
     p.close();
@@ -2454,6 +2501,345 @@ async function pickLibraryFor(files) {
     if (!id) { const name = await promptBox(T('newLib'), T('libDefaultName', { d: df(Date.now()) }), T('create')); if (name == null) return; id = (await newLibrary(name)).id; }
     await importToLib(id, files); go('lib', id);
   });
+}
+
+/* ═══ CollageNest 1.4 — shaped mosaics: heart / circle / star / text (number, name)
+   With a main photo → only cells inside the shape get tiles. Without one → a rainbow target, so the
+   tiles arrange themselves by colour inside the shape. ═══ */
+
+const OUTLINES = ['none', 'heart', 'circle', 'star', 'text'];
+function outlineFont(px) { return '900 ' + px + 'px system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Hebrew","Noto Sans Arabic",Arial,sans-serif'; }
+function shapeRatio(kind, text) { // width / height of the shape itself
+  if (kind !== 'text') return 1;
+  const c = mkCanvas(10, 10), x = c.getContext('2d'); x.font = outlineFont(100);
+  const w = x.measureText(text || '?').width; return clamp(w / 100, 0.4, 4.5);
+}
+function drawOutline(x, kind, text, W, H) { // filled shape centred in W×H with a small margin
+  x.save(); x.fillStyle = '#000';
+  const m = Math.min(W, H) * 0.04, w = W - 2 * m, h = H - 2 * m, cx = W / 2, cy = H / 2;
+  x.beginPath();
+  if (kind === 'circle') { x.ellipse(cx, cy, w / 2, h / 2, 0, 0, Math.PI * 2); x.fill(); }
+  else if (kind === 'heart') {
+    const s = Math.min(w, h), ox = cx - s / 2, oy = cy - s / 2;
+    x.moveTo(ox + s * 0.5, oy + s * 0.96);
+    x.bezierCurveTo(ox + s * 0.1, oy + s * 0.68, ox - s * 0.02, oy + s * 0.38, ox + s * 0.08, oy + s * 0.2);
+    x.bezierCurveTo(ox + s * 0.2, oy + s * 0.0, ox + s * 0.44, oy + s * 0.02, ox + s * 0.5, oy + s * 0.2);
+    x.bezierCurveTo(ox + s * 0.56, oy + s * 0.02, ox + s * 0.8, oy + s * 0.0, ox + s * 0.92, oy + s * 0.2);
+    x.bezierCurveTo(ox + s * 1.02, oy + s * 0.38, ox + s * 0.9, oy + s * 0.68, ox + s * 0.5, oy + s * 0.96);
+    x.fill();
+  } else if (kind === 'star') {
+    const R = Math.min(w, h) / 2, r = R * 0.45, yo = cy + R * 0.08;
+    for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? r : R; x[k ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * rr, yo + Math.sin(a) * rr); }
+    x.closePath(); x.fill();
+  } else if (kind === 'text') {
+    let fs = h; x.font = outlineFont(fs); let tw = x.measureText(text || '?').width;
+    if (tw > w) { fs = fs * w / tw; x.font = outlineFont(fs); }
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    try { x.direction = /[֐-׿؀-ۿ]/.test(text) ? 'rtl' : 'ltr'; } catch (e) {}
+    x.fillText(text || '?', cx, cy + fs * 0.04);
+  }
+  x.restore();
+}
+/* which cells are inside the shape (sampled at each cell centre) */
+function makeMask(m, kind, text) {
+  if (!kind || kind === 'none') return null;
+  const [uw, uh] = gridUnits(m), MW = 600, MH = Math.max(8, Math.round(600 * uh / uw));
+  const c = mkCanvas(MW, MH), x = c.getContext('2d', { willReadFrequently: true });
+  drawOutline(x, kind, text, MW, MH);
+  const d = x.getImageData(0, 0, MW, MH).data, C = m.cols * m.rows, mask = new Uint8Array(C);
+  const cw = MW / uw * m.a, ch = MH / uh; let n = 0;
+  for (let i = 0; i < C; i++) {
+    const [px, py] = cellPos(m, i, cw, ch), sx = Math.round(px + cw / 2), sy = Math.round(py + ch / 2);
+    if (sx >= 0 && sy >= 0 && sx < MW && sy < MH && d[(sy * MW + sx) * 4 + 3] > 127) { mask[i] = 1; n++; }
+  }
+  mask.count = n;
+  return n ? mask : null;
+}
+/* rainbow target used when a shape has no main photo */
+async function makeRainbowMain(ratio) {
+  const W = ratio >= 1 ? 1400 : Math.round(1400 * ratio), H = ratio >= 1 ? Math.round(1400 / ratio) : 1400;
+  const c = mkCanvas(W, H), x = c.getContext('2d');
+  if (x.createConicGradient) {
+    const g = x.createConicGradient(-Math.PI / 2, W / 2, H / 2);
+    for (let k = 0; k <= 12; k++) g.addColorStop(k / 12, 'hsl(' + (k * 30) + ',75%,55%)');
+    x.fillStyle = g;
+  } else { const g = x.createLinearGradient(0, 0, W, H); for (let k = 0; k <= 6; k++) g.addColorStop(k / 6, 'hsl(' + (k * 60) + ',75%,55%)'); x.fillStyle = g; }
+  x.fillRect(0, 0, W, H);
+  const rg = x.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.55);
+  rg.addColorStop(0, 'rgba(255,255,255,.55)'); rg.addColorStop(0.5, 'rgba(255,255,255,0)'); rg.addColorStop(1, 'rgba(0,0,0,.25)');
+  x.fillStyle = rg; x.fillRect(0, 0, W, H);
+  return await createImageBitmap(c);
+}
+
+/* ═══ CollageNest 1.4 — word mosaic: the photo shows only through lines of repeated text ═══
+   Text is drawn as a white mask; the (boosted) photo is clipped to it with destination-in.
+   Works in every script (Hebrew, Arabic joining stays intact because whole strings are drawn). */
+
+const WS = { main: null, name: '' };
+function wordsDims(long) { const b = WS.main, a = b ? b.width / b.height : 1; return a >= 1 ? { W: long, H: Math.round(long / a) } : { W: Math.round(long * a), H: long }; }
+function renderWords(W, H) {
+  const st = S.words, b = WS.main;
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  x.fillStyle = st.bg; x.fillRect(0, 0, W, H);
+  if (!b) return c;
+  // photo layer (a little brighter / more saturated so thin letters still read)
+  const ph = document.createElement('canvas'); ph.width = W; ph.height = H; const px = ph.getContext('2d');
+  try { px.filter = 'saturate(' + st.boost + ') contrast(1.12) brightness(' + (1 + (st.boost - 1) * 0.35) + ')'; } catch (e) {}
+  px.imageSmoothingQuality = 'high'; px.drawImage(b, 0, 0, W, H); px.filter = 'none';
+  // text mask
+  const mk = document.createElement('canvas'); mk.width = W; mk.height = H; const mx = mk.getContext('2d');
+  const lh = Math.max(4, st.size / 100 * H), fs = lh * 0.92, txt = (st.text || '').replace(/\s+/g, ' ').trim() || 'CollageNest';
+  mx.font = FONTS[st.font || 'sans'].replace('{s}', Math.round(fs));
+  mx.fillStyle = '#fff'; mx.textBaseline = 'middle';
+  const rtl = /[֐-׿؀-ۿ]/.test(txt);
+  try { mx.direction = rtl ? 'rtl' : 'ltr'; } catch (e) {}
+  mx.textAlign = rtl ? 'right' : 'left';
+  const unit = txt + ' · ', uw = Math.max(1, mx.measureText(unit).width), reps = Math.ceil(W / uw) + 2;
+  const line = unit.repeat(reps);
+  for (let y = lh / 2, r = 0; y < H + lh; y += lh, r++) {
+    const shift = ((r * 0.38) % 1) * uw; // offset each row so words do not stack in columns
+    mx.fillText(line, rtl ? W + shift : -shift, y);
+  }
+  px.globalCompositeOperation = 'destination-in'; px.drawImage(mk, 0, 0);
+  x.drawImage(ph, 0, 0);
+  mk.width = mk.height = ph.width = ph.height = 1;
+  return c;
+}
+async function renderWordsSetup() {
+  const st = S.words;
+  $('main').innerHTML = '<div class="screen">' +
+    '<div class="card"><h3>🔤 ' + esc(T('wordsTitle')) + '</h3><p class="muted" style="margin-top:0">' + esc(T('wordsIntro')) + '</p>' +
+    '<button class="pickbox" id="wPick" type="button">' + (WS.main ? '<canvas id="wThumb"></canvas>' : '<span class="em">🖼️</span>') + '<span><b>' + esc(WS.main ? (WS.name || T('mainChosen')) : T('pickMain')) + '</b><br><small class="muted">' + esc(WS.main ? T('tapToChange') : T('wordsPhotoHint')) + '</small></span></button>' +
+    '<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="wSample" type="button">✨ ' + esc(T('useSample')) + '</button></div></div>' +
+    '<div class="card"><label class="f" for="wText">' + esc(T('wordsText')) + '</label><input type="text" id="wText" maxlength="60" value="' + esc(st.text) + '" placeholder="' + esc(T('wordsPh')) + '">' +
+    '<label class="f" for="wSize">' + esc(T('lineSize')) + ': <span class="val" id="wSizeV">' + st.size + '</span></label><input type="range" id="wSize" min="1.2" max="8" step="0.1" value="' + st.size + '">' +
+    '<div class="small muted">' + esc(T('lineSizeHint')) + '</div>' +
+    '<label class="f">' + esc(T('font')) + '</label><div class="seg" id="wFont">' + ['sans', 'serif', 'script'].map(v => '<button type="button" data-v="' + v + '" class="' + (st.font === v ? 'on' : '') + '">' + esc(T('fn_' + v)) + '</button>').join('') + '</div>' +
+    '<label class="f">' + esc(T('background')) + '</label><div class="swatches" id="wBg">' + ['#0b0b0c', '#ffffff', '#1c2a44', '#2a1630', '#f3ead7'].map(c => '<button type="button" data-c="' + c + '" class="' + (st.bg === c ? 'on' : '') + '" style="background:' + c + '" aria-label="' + c + '"></button>').join('') + '<input type="color" id="wBgI" value="' + st.bg + '" aria-label="' + esc(T('customColor')) + '"></div>' +
+    '<label class="f" for="wBoost">' + esc(T('colorBoost')) + ': <span class="val" id="wBoostV">' + Math.round(st.boost * 100) + '%</span></label><input type="range" id="wBoost" min="1" max="2" step="0.05" value="' + st.boost + '"></div>' +
+    '<div class="card" style="padding:10px"><canvas id="wPrev" style="width:100%;border-radius:10px;display:block;background:var(--bg3)" aria-label="' + esc(T('preview')) + '"></canvas></div>' +
+    '<button class="btn primary big" id="wExport" type="button"' + (WS.main ? '' : ' disabled') + '>⬇️ ' + esc(T('exportSave')) + '</button></div>';
+  if (WS.main && $('wThumb')) drawThumbInto($('wThumb'), WS.main);
+  const prev = () => {
+    const cv = $('wPrev'); if (!cv) return;
+    if (!WS.main) { cv.width = 900; cv.height = 300; const x = cv.getContext('2d'); x.fillStyle = S.words.bg; x.fillRect(0, 0, 900, 300); return; }
+    const d = wordsDims(900), r = renderWords(d.W, d.H); cv.width = d.W; cv.height = d.H; cv.getContext('2d').drawImage(r, 0, 0);
+  };
+  let tm = 0; const later = () => { clearTimeout(tm); tm = setTimeout(prev, 90); saveS(); };
+  prev();
+  $('wPick').onclick = async () => {
+    const f = (await pickFiles('one'))[0]; if (!f) return;
+    const p = Prog.show(T('loadingPhoto'), false);
+    try { const b = await decodeScaled(f, 3000); if (WS.main) try { WS.main.close(); } catch (e) {} WS.main = b; WS.name = f.name.replace(/\.[^.]+$/, ''); } catch (e) { p.close(); toast(T('decodeFail'), true); return; }
+    p.close(); renderWordsSetup();
+  };
+  $('wSample').onclick = async () => { WS.main = await makeDemoMain(); WS.name = T('sampleName'); renderWordsSetup(); };
+  $('wText').oninput = e => { st.text = e.target.value; later(); };
+  $('wSize').oninput = e => { st.size = +e.target.value; $('wSizeV').textContent = st.size; later(); };
+  $('wBoost').oninput = e => { st.boost = +e.target.value; $('wBoostV').textContent = Math.round(st.boost * 100) + '%'; later(); };
+  $('wFont').querySelectorAll('button').forEach(b => b.onclick = () => { st.font = b.dataset.v; $('wFont').querySelectorAll('button').forEach(z => z.classList.toggle('on', z === b)); later(); });
+  $('wBg').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { st.bg = b.dataset.c; $('wBgI').value = st.bg; $('wBg').querySelectorAll('[data-c]').forEach(z => z.classList.toggle('on', z === b)); later(); });
+  $('wBgI').oninput = e => { st.bg = e.target.value; later(); };
+  $('wExport').onclick = () => {
+    if (!WS.main) { toast(T('needMain'), true); return; }
+    const sizes = isCoarse() ? { '2k': 2048, '3k': 3072, '4k': 4096 } : { '2k': 2048, '4k': 4096, '8k': 8192 };
+    if (!sizes[st.exSize]) st.exSize = '4k';
+    exportFlow({
+      sizes, sizeKey: () => st.exSize, setSize: k => { st.exSize = k; },
+      dims: long => wordsDims(long),
+      render: async long => { const d = wordsDims(long), c = renderWords(d.W, d.H); if (S.sign && S.name) drawSignature(c.getContext('2d'), d.W, d.H); return { c, W: d.W, H: d.H }; },
+      kind: 'words', name: () => (st.text || T('wordsTitle')).slice(0, 40),
+      thumb: async () => { const d = wordsDims(360); return await canvasToBlob(renderWords(d.W, d.H), 'image/jpeg', 0.82); }
+    });
+  };
+}
+
+/* ═══ CollageNest 1.4 — print wall: any creation split into A4/A3 pages (PDF, crop marks, page labels) ═══ */
+
+const JSPDF_URLS = [
+  'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+  'https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+];
+const PAPERS = { a4: [210, 297], a3: [297, 420] };
+function wallPlan(aspect, paper, orient, cols) { // all in mm
+  let [pw, ph] = PAPERS[paper] || PAPERS.a4;
+  if (orient === 'land') [pw, ph] = [ph, pw];
+  const mg = 8, cw = pw - mg * 2, chh = ph - mg * 2;
+  const totalW = cols * cw, totalH = totalW / aspect, rows = Math.max(1, Math.ceil(totalH / chh - 0.02));
+  return { pw, ph, mg, cw, ch: chh, cols, rows, totalW, totalH, pages: cols * rows };
+}
+function printWall(o) {
+  const st = S.print || (S.print = { paper: 'a4', orient: 'port', cols: 3 });
+  const d0 = o.dims(1000), aspect = d0.W / d0.H;
+  const info = () => { const w = wallPlan(aspect, st.paper, st.orient, st.cols); return T('wallInfo', { c: nf(w.cols), r: nf(w.rows), n: nf(w.pages), w: nf(Math.round(w.totalW / 10)), h: nf(Math.round(w.totalH / 10)) }); };
+  const md = openModal({
+    title: T('printWall'),
+    html: '<p class="small muted" style="margin-top:-4px">' + esc(T('printWallIntro')) + '</p>' +
+      '<label class="f">' + esc(T('paper')) + '</label><div class="seg" id="pwPaper">' + Object.keys(PAPERS).map(k => '<button type="button" data-v="' + k + '" class="' + (st.paper === k ? 'on' : '') + '">' + k.toUpperCase() + '</button>').join('') + '</div>' +
+      '<label class="f">' + esc(T('orientation')) + '</label><div class="seg" id="pwOr">' + ['port', 'land'].map(k => '<button type="button" data-v="' + k + '" class="' + (st.orient === k ? 'on' : '') + '">' + esc(T('or_' + k)) + '</button>').join('') + '</div>' +
+      '<label class="f" for="pwCols">' + esc(T('pagesAcross')) + ': <span class="val" id="pwColsV">' + st.cols + '</span></label><input type="range" id="pwCols" min="1" max="8" value="' + st.cols + '">' +
+      '<div class="note" id="pwInfo">' + esc(info()) + '</div>',
+    actions: [
+      { label: '⬇️ ' + T('downloadPdf'), cls: 'primary', keep: true, onClick: () => run('download') },
+      { label: '📤 ' + T('share'), keep: true, onClick: () => run('share') }
+    ]
+  });
+  const upd = () => { $('pwInfo').textContent = info(); saveS(); };
+  [['pwPaper', 'paper'], ['pwOr', 'orient']].forEach(([id, k]) => md.body.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => { st[k] = b.dataset.v; md.body.querySelectorAll('#' + id + ' button').forEach(z => z.classList.toggle('on', z === b)); upd(); }));
+  $('pwCols').oninput = e => { st.cols = +e.target.value; $('pwColsV').textContent = st.cols; upd(); };
+  async function run(kind) {
+    const p = Prog.show(T('makingWall'), true);
+    try {
+      p.set(0.02, T('loadingPdf'));
+      await loadScript(JSPDF_URLS, () => !!(window.jspdf && window.jspdf.jsPDF));
+      const w = wallPlan(aspect, st.paper, st.orient, st.cols);
+      // resolution: aim for 150 dpi, capped by what the device can hold
+      const maxArea = isCoarse() ? 24e6 : 60e6;
+      let pxmm = 150 / 25.4; if (w.totalW * pxmm * w.totalH * pxmm > maxArea) pxmm = Math.sqrt(maxArea / (w.totalW * w.totalH));
+      const long = Math.round(Math.max(w.totalW, w.totalH) * pxmm);
+      const r = await o.render(long, p);
+      if (p.cancelled) throw new Error('cancel');
+      const k = r.W / w.totalW; // px per mm in the rendered image
+      const pdf = new window.jspdf.jsPDF({ orientation: w.pw > w.ph ? 'landscape' : 'portrait', unit: 'mm', format: st.paper, compress: true });
+      const pg = document.createElement('canvas'), px = pg.getContext('2d');
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      let n = 0;
+      for (let row = 0; row < w.rows; row++) for (let col = 0; col < w.cols; col++) {
+        if (p.cancelled) throw new Error('cancel');
+        if (n) pdf.addPage(st.paper, w.pw > w.ph ? 'landscape' : 'portrait');
+        const sx = col * w.cw * k, sy = row * w.ch * k, sw = Math.min(w.cw * k, r.W - sx), sh = Math.min(w.ch * k, r.H - sy);
+        if (sw > 1 && sh > 1) {
+          pg.width = Math.round(sw); pg.height = Math.round(sh);
+          px.drawImage(r.c, sx, sy, sw, sh, 0, 0, pg.width, pg.height);
+          pdf.addImage(pg.toDataURL('image/jpeg', 0.9), 'JPEG', w.mg, w.mg, sw / k, sh / k, undefined, 'FAST');
+        }
+        // crop marks at the content corners + label
+        const x0 = w.mg, y0 = w.mg, x1 = w.mg + w.cw, y1 = w.mg + w.ch, L = 5;
+        pdf.setDrawColor(120); pdf.setLineWidth(0.2);
+        [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].forEach(([cx, cy]) => { pdf.line(cx - (cx === x0 ? L : -1), cy, cx + (cx === x0 ? -1 : L), cy); pdf.line(cx, cy - (cy === y0 ? L : -1), cx, cy + (cy === y0 ? -1 : L)); });
+        pdf.setFontSize(8); pdf.setTextColor(110);
+        pdf.text((letters[row] || ('R' + (row + 1))) + (col + 1) + '  ·  ' + (n + 1) + '/' + w.pages + '  ·  CollageNest', w.pw / 2, w.ph - 3, { align: 'center' });
+        n++; p.set(0.9 + 0.09 * n / w.pages, T('pageN', { n: nf(n), t: nf(w.pages) })); await yieldUI();
+      }
+      r.c.width = r.c.height = 1; pg.width = pg.height = 1;
+      const blob = pdf.output('blob'), name = 'CollageNest-wall-' + st.paper + '-' + w.cols + 'x' + w.rows + '-' + fileStamp() + '.pdf';
+      p.close();
+      if (kind === 'share') await shareBlob(blob, name); else { downloadBlob(blob, name); toast(T('wallDone', { n: nf(w.pages) })); }
+    } catch (e) {
+      p.close();
+      if (e && e.message === 'cancel') toast(T('cancelled'));
+      else { logErr('wall: ' + (e && e.message)); toast(e && e.message === 'cdn' ? T('pdfUnavailable') : T('exportFail'), true); }
+    }
+  }
+}
+
+/* ═══ CollageNest 1.4 — "zoom-out" video: starts on one photo and pulls back to the whole mosaic ═══
+   Canvas → captureStream → MediaRecorder (MP4 when the browser can, otherwise WebM). Real-time:
+   the screen must stay on while it records. Hi-res tiles for the close-up part are decoded first. */
+
+function videoMime() {
+  const c = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  if (typeof MediaRecorder === 'undefined') return '';
+  for (const m of c) { try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) {} }
+  return '';
+}
+function videoSheet() {
+  const m = MS; if (!m) return;
+  const st = S.video || (S.video = { fmt: '1:1', dur: 8 });
+  if (!videoMime()) { toast(T('videoUnsupported'), true); return; }
+  const md = openModal({
+    title: T('zoomVideo'),
+    html: '<p class="small muted" style="margin-top:-4px">' + esc(T('zoomVideoIntro')) + '</p>' +
+      '<label class="f">' + esc(T('videoFormat')) + '</label><div class="seg" id="vfFmt">' + [['1:1', 'vf_square'], ['9:16', 'vf_story'], ['16:9', 'vf_wide']].map(([k, l]) => '<button type="button" data-v="' + k + '" class="' + (st.fmt === k ? 'on' : '') + '">' + esc(T(l)) + '</button>').join('') + '</div>' +
+      '<label class="f">' + esc(T('videoLength')) + '</label><div class="seg" id="vfDur">' + [6, 8, 12, 16].map(s => '<button type="button" data-v="' + s + '" class="' + (st.dur === s ? 'on' : '') + '">' + esc(T('seconds', { n: s })) + '</button>').join('') + '</div>' +
+      '<div class="note">' + esc(Ed.sel >= 0 ? T('videoFromSelected') : T('videoFromAuto')) + '<br>' + esc(T('videoKeepOn')) + '</div>',
+    actions: [{ label: '🎬 ' + T('makeVideo'), cls: 'primary', keep: true, onClick: () => recordZoom(md) }]
+  });
+  [['vfFmt', 'fmt', v => v], ['vfDur', 'dur', v => +v]].forEach(([id, k, f]) => md.body.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => { st[k] = f(b.dataset.v); saveS(); md.body.querySelectorAll('#' + id + ' button').forEach(z => z.classList.toggle('on', z === b)); }));
+}
+function pickStartCell(m) {
+  if (Ed.sel >= 0 && m.assign[Ed.sel] >= 0) return Ed.sel;
+  // a filled cell near the centre (inside the shape if there is one)
+  const cx = m.comp.width / 2, cy = m.comp.height / 2; let best = 0, bd = Infinity;
+  for (let i = 0; i < m.assign.length; i++) { if (m.assign[i] < 0) continue; const [px, py] = cellPos(m, i, m.cw, m.ch), d = (px - cx) ** 2 + (py - cy) ** 2; if (d < bd) { bd = d; best = i; } }
+  return best;
+}
+async function recordZoom(md) {
+  const m = MS, st = S.video, sty = S.mosaic, mime = videoMime();
+  const [OW, OH] = st.fmt === '9:16' ? [1080, 1920] : st.fmt === '16:9' ? [1920, 1080] : [1080, 1080];
+  const p = Prog.show(T('preparingVideo'), true);
+  const cv = document.createElement('canvas'); cv.width = OW; cv.height = OH;
+  Object.assign(cv.style, { position: 'fixed', left: '-9999px', top: '0', width: '10px', height: '10px' }); document.body.appendChild(cv);
+  const x = cv.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  const hi = new Map();
+  try {
+    const start = pickStartCell(m), [sx0, sy0] = cellPos(m, start, m.cw, m.ch);
+    const tc = [sx0 + m.cw / 2, sy0 + m.ch / 2], ic = [m.comp.width / 2, m.comp.height / 2];
+    const s0 = Math.min(OW, OH) * 0.8 / Math.max(m.cw, m.ch);                 // one tile ≈ 80% of the frame
+    const s1 = Math.min(OW / m.comp.width, OH / m.comp.height) * 0.94;        // whole mosaic
+    // decode hi-res tiles that appear while cells are big on screen
+    const near = [], R = Math.ceil(Math.max(OW, OH) / (s0 * Math.min(m.cw, m.ch)) * 6) + 2;
+    const scx = start % m.cols, scy = (start / m.cols) | 0;
+    for (let y = Math.max(0, scy - R); y < Math.min(m.rows, scy + R); y++) for (let xx = Math.max(0, scx - R); xx < Math.min(m.cols, scx + R); xx++) { const i = y * m.cols + xx; if (m.assign[i] >= 0) near.push(m.tileOf[m.assign[i]]); }
+    const uniq = [...new Set(near)].slice(0, 220);
+    for (let k = 0; k < uniq.length; k++) {
+      if (p.cancelled) throw new Error('cancel');
+      try { hi.set(uniq[k], await createImageBitmap(m.tiles[uniq[k]].blob)); } catch (e) {}
+      if (k % 10 === 0) p.set(0.3 * k / uniq.length, T('preparingVideo'));
+    }
+    const frame = t => { // t: 0..1 of the zoom part
+      const e = t < 0 ? 0 : t > 1 ? 1 : (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2); // ease in-out
+      const s = s0 * Math.pow(s1 / s0, e), f = (1 / s - 1 / s0) / (1 / s1 - 1 / s0);
+      const cx = tc[0] + (ic[0] - tc[0]) * f, cy = tc[1] + (ic[1] - tc[1]) * f, tx = OW / 2 - cx * s, ty = OH / 2 - cy * s;
+      x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = m.mask ? (sty.shapeBg || '#fff') : '#0b0b0c'; x.fillRect(0, 0, OW, OH);
+      x.setTransform(s, 0, 0, s, tx, ty);
+      if (m.ch * s <= m.ch * 1.3) { x.drawImage(m.comp, 0, 0); return; }
+      const vx0 = -tx / s, vy0 = -ty / s, vx1 = (OW - tx) / s, vy1 = (OH - ty) / s;
+      x.save(); x.beginPath(); x.rect(0, 0, m.comp.width, m.comp.height); x.clip(); paintBackground(x, m.comp.width, m.comp.height, sty, m);
+      const rs = m.hex ? 0.75 : 1, ro = m.hex ? 0.25 : 0, co = m.hex ? 0.5 : 0;
+      const c0 = clamp(Math.floor(vx0 / m.cw - 1 + co), 0, m.cols - 1), c1 = clamp(Math.ceil(vx1 / m.cw + 1 + co), 0, m.cols);
+      const r0 = clamp(Math.floor((vy0 / m.ch + ro) / rs - 1), 0, m.rows - 1), r1 = clamp(Math.ceil((vy1 / m.ch + ro) / rs + 1), 0, m.rows);
+      for (let cy2 = r0; cy2 < r1; cy2++) for (let cx2 = c0; cx2 < c1; cx2++) {
+        const i = cy2 * m.cols + cx2; if (m.assign[i] < 0) continue;
+        const t2 = m.tileOf[m.assign[i]], [px, py] = cellPos(m, i, m.cw, m.ch);
+        drawCell(x, m, i, px, py, m.cw, m.ch, hi.get(t2) || m.minis[t2], sty, m.comp.width, m.comp.height);
+      }
+      x.restore();
+    };
+    frame(0);
+    const stream = cv.captureStream(30), rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6 }), chunks = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    const done = new Promise(r => { rec.onstop = r; });
+    rec.start(250);
+    const D = st.dur * 1000, zoomPart = D * 0.82, t0 = performance.now();
+    await new Promise((res, rej) => {
+      const step = () => {
+        if (p.cancelled) { rej(new Error('cancel')); return; }
+        const el = performance.now() - t0;
+        frame(Math.max(0, el - D * 0.06) / zoomPart);
+        p.set(0.3 + 0.68 * Math.min(1, el / D), T('recordingVideo', { s: Math.max(0, Math.ceil((D - el) / 1000)) }));
+        if (el >= D) res(); else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }).finally(() => { try { rec.stop(); } catch (e) {} stream.getTracks().forEach(t => t.stop()); });
+    await done;
+    const blob = new Blob(chunks, { type: mime.split(';')[0] }), ext = mime.includes('mp4') ? 'mp4' : 'webm';
+    p.close();
+    if (!blob.size) { toast(T('videoFail'), true); return; }
+    const name = 'CollageNest-zoom-' + fileStamp() + '.' + ext;
+    md.close();
+    const vm = openModal({
+      title: T('videoReady'),
+      html: '<video controls playsinline autoplay muted loop style="width:100%;max-height:55vh;border-radius:12px;background:#000" src="' + trackURL(URL.createObjectURL(blob)) + '"></video>' +
+        '<p class="small muted">' + esc(T('videoInfo', { s: st.dur, f: ext.toUpperCase(), mb: (blob.size / 1048576).toFixed(1) })) + (ext === 'webm' ? ' ' + esc(T('webmNote')) : '') + '</p>',
+      actions: [{ label: '⬇️ ' + T('download'), cls: 'primary', keep: true, onClick: () => downloadBlob(blob, name) }, { label: '📤 ' + T('share'), keep: true, onClick: () => shareBlob(blob, name) }, { label: T('close'), cls: 'ghost' }]
+    });
+    window.__lastVideo = blob; void vm;
+  } catch (e) {
+    p.close();
+    if (e && e.message === 'cancel') toast(T('cancelled')); else { logErr('video: ' + (e && e.message)); toast(T('videoFail'), true); }
+  } finally { hi.forEach(b => { try { b.close(); } catch (e) {} }); cv.remove(); }
 }
 
 /* ═══ CollageNest — LANG (5 languages). Missing key → English. ═══ */
@@ -2967,14 +3353,22 @@ Object.assign(LANG.ru, {"asp_hex": "Шестиугольники", "saveProject"
 Object.assign(LANG.es, {"asp_hex": "Hexágonos", "saveProject": "Proyecto", "projectName": "Nombre del proyecto", "savingProject": "Guardando proyecto…", "projectSaved": "Proyecto guardado: está en «Mis proyectos»", "projectLibGone": "Se eliminó la biblioteca de este proyecto", "openingProject": "Abriendo proyecto…", "projectMissing": "{n} teselas usaban fotos eliminadas: se cambiaron por la mejor coincidencia restante", "editProject": "Editar proyecto", "nTiles": "{n} teselas", "deleteProjectQ": "¿Eliminar este proyecto? (Las creaciones guardadas no se tocan.)", "myProjects": "Mis proyectos", "titleText": "Texto", "titlePh": "p. ej.: Eilat 2026", "textColor": "Color del texto", "position": "Posición", "pos_top": "Arriba", "pos_center": "Centro", "pos_bottom": "Abajo", "textStyle": "Aspecto", "ts_shadow": "Sombra", "ts_band": "Banda", "ts_plain": "Simple", "font": "Fuente", "fn_sans": "Negrita", "fn_serif": "Clásica", "fn_script": "Manuscrita", "addText": "Añadir texto", "removeText": "Quitar texto", "text": "Texto", "sharedNone": "No llegaron fotos", "sharedTitle": "Se recibieron {n} fotos: ¿qué hacemos?", "shareAsMain": "Foto principal de un mosaico", "shareToLib": "Añadir a una biblioteca", "shareToAuto": "Crear AutoCollage", "shareToCollage": "Crear collage", "chooseLib": "Elige una biblioteca", "backupNote": "Copia de ajustes = archivo pequeño. La copia completa incluye todas las bibliotecas (puede ser grande). Las creaciones guardadas y los proyectos de mosaico no se incluyen: descarga las creaciones desde la galería.", "tip7": "Comparte fotos desde la galería del móvil directamente a CollageNest (tras instalar la app)."});
 Object.assign(LANG.ar, {"asp_hex": "سداسيات", "saveProject": "مشروع", "projectName": "اسم المشروع", "savingProject": "جارٍ حفظ المشروع…", "projectSaved": "تم حفظ المشروع — تجده في «مشاريعي»", "projectLibGone": "تم حذف مكتبة البلاطات الخاصة بهذا المشروع", "openingProject": "جارٍ فتح المشروع…", "projectMissing": "{n} بلاطة استخدمت صورًا محذوفة — استُبدلت بأفضل تطابق متبقٍ", "editProject": "تعديل المشروع", "nTiles": "{n} بلاطة", "deleteProjectQ": "حذف هذا المشروع؟ (الأعمال المحفوظة لا تتأثر.)", "myProjects": "مشاريعي", "titleText": "النص", "titlePh": "مثال: إيلات 2026", "textColor": "لون النص", "position": "الموضع", "pos_top": "أعلى", "pos_center": "وسط", "pos_bottom": "أسفل", "textStyle": "المظهر", "ts_shadow": "ظل", "ts_band": "شريط", "ts_plain": "عادي", "font": "الخط", "fn_sans": "عريض", "fn_serif": "كلاسيكي", "fn_script": "بخط اليد", "addText": "إضافة نص", "removeText": "إزالة النص", "text": "نص", "sharedNone": "لم تصل صور من المشاركة", "sharedTitle": "وصلت {n} صور — ماذا نفعل؟", "shareAsMain": "صورة رئيسية لفسيفساء", "shareToLib": "إضافة إلى مكتبة بلاطات", "shareToAuto": "إنشاء AutoCollage", "shareToCollage": "إنشاء كولاج", "chooseLib": "اختر مكتبة", "backupNote": "نسخة الإعدادات = ملف صغير. النسخة الكاملة تشمل كل المكتبات (قد تكون كبيرة). الأعمال المحفوظة ومشاريع الفسيفساء غير مشمولة — نزّل الأعمال من المعرض.", "tip7": "شارك الصور من معرض الهاتف مباشرة إلى CollageNest (بعد تثبيت التطبيق)."});
 
+/* v1.4 strings: shapes, word mosaic, print wall, zoom video */
+Object.assign(LANG.en, {"needShapeText": "Type the text or number for the shape", "ol_none": "Full picture", "ol_heart": "Heart", "ol_circle": "Circle", "ol_star": "Star", "ol_text": "Text / number", "outline": "Mosaic shape", "shapeText": "Text inside the shape", "outlineWithPhoto": "Only the tiles inside the shape are used — the rest stays clean.", "outlineNoPhoto": "No main photo needed: the tiles arrange themselves by colour, like a rainbow, inside the shape.", "shapeBg": "Colour around the shape", "useRainbow": "Without a main photo (rainbow)", "wordsTitle": "Word mosaic", "wordsDesc": "Your photo drawn with a name or a greeting", "wordsIntro": "Write a name, a greeting or a date. The photo appears only through the letters, line after line — a lovely gift.", "wordsPhotoHint": "The photo that the words will show", "wordsText": "Text", "wordsPh": "e.g. Happy birthday Mom ♥", "lineSize": "Line size", "lineSizeHint": "Smaller lines = more text and more detail", "colorBoost": "Colour boost", "preview": "Preview", "printWall": "Print wall", "printWallIntro": "Split the picture into pages, print at home and join them on the wall. Each page has cut marks and a label (A1, A2…).", "paper": "Paper", "orientation": "Orientation", "or_port": "Portrait", "or_land": "Landscape", "pagesAcross": "Pages across", "wallInfo": "{c} × {r} = {n} pages · about {w} × {h} cm", "downloadPdf": "Download PDF", "makingWall": "Preparing the pages", "loadingPdf": "Loading the PDF tool (once)…", "pageN": "Page {n} of {t}", "wallDone": "PDF ready — {n} pages", "pdfUnavailable": "The PDF tool could not be loaded (no internet?). Try again online.", "zoomVideo": "Zoom video", "zoomVideoIntro": "A short video that starts on one photo and pulls back until the whole mosaic appears. Great for WhatsApp and stories.", "videoFormat": "Format", "vf_square": "Square", "vf_story": "Story 9:16", "vf_wide": "Wide 16:9", "videoLength": "Length", "seconds": "{n} sec", "videoFromSelected": "Starts from the tile you selected.", "videoFromAuto": "Starts from a photo near the centre — tap a tile first to choose where it starts.", "videoKeepOn": "Keep the screen on and the app open while it records.", "makeVideo": "Make video", "preparingVideo": "Preparing the video…", "recordingVideo": "Recording… {s} s left", "videoReady": "Video ready", "videoInfo": "{s} seconds · {f} · {mb} MB", "webmNote": "Some apps don't play WebM — if it doesn't open, send it as a file.", "videoFail": "Could not make the video on this device", "videoUnsupported": "This browser can't record video", "g8t": "Print wall & video", "g8": "Any creation can become a print wall (A4/A3 pages in a PDF). A mosaic can also become a zoom-out video."});
+Object.assign(LANG.he, {"needShapeText": "כתוב את הטקסט או המספר לצורה", "ol_none": "תמונה מלאה", "ol_heart": "לב", "ol_circle": "עיגול", "ol_star": "כוכב", "ol_text": "טקסט / מספר", "outline": "צורת הפסיפס", "shapeText": "הטקסט בתוך הצורה", "outlineWithPhoto": "רק האריחים שבתוך הצורה נכנסים — מסביב נשאר נקי.", "outlineNoPhoto": "לא צריך תמונה ראשית: האריחים מסתדרים לפי צבע, כמו קשת, בתוך הצורה.", "shapeBg": "הצבע מסביב לצורה", "useRainbow": "בלי תמונה ראשית (קשת)", "wordsTitle": "פסיפס מילים", "wordsDesc": "התמונה שלך מצוירת בשם או בברכה", "wordsIntro": "כתוב שם, ברכה או תאריך. התמונה מופיעה רק דרך האותיות, שורה אחרי שורה — מתנה מקסימה.", "wordsPhotoHint": "התמונה שהמילים יציגו", "wordsText": "טקסט", "wordsPh": "למשל: מזל טוב אמא ♥", "lineSize": "גודל השורה", "lineSizeHint": "שורות קטנות = יותר טקסט ויותר פרטים", "colorBoost": "הגברת צבע", "preview": "תצוגה מקדימה", "printWall": "קיר להדפסה", "printWallIntro": "מחלקים את התמונה לדפים, מדפיסים בבית ומחברים על הקיר. בכל דף יש סימני חיתוך ותווית (A1, A2…).", "paper": "נייר", "orientation": "כיוון", "or_port": "לאורך", "or_land": "לרוחב", "pagesAcross": "דפים לרוחב", "wallInfo": "{c} × {r} = {n} דפים · בערך {w} × {h} ס״מ", "downloadPdf": "הורד PDF", "makingWall": "מכין את הדפים", "loadingPdf": "טוען את כלי ה-PDF (פעם אחת)…", "pageN": "דף {n} מתוך {t}", "wallDone": "ה-PDF מוכן — {n} דפים", "pdfUnavailable": "לא הצלחתי לטעון את כלי ה-PDF (אין אינטרנט?). נסה שוב עם חיבור.", "zoomVideo": "סרטון זום", "zoomVideoIntro": "סרטון קצר שמתחיל מתמונה אחת ומתרחק עד שרואים את כל הפסיפס. מעולה לוואטסאפ ולסטורי.", "videoFormat": "פורמט", "vf_square": "ריבוע", "vf_story": "סטורי 9:16", "vf_wide": "רחב 16:9", "videoLength": "אורך", "seconds": "{n} שנ׳", "videoFromSelected": "מתחיל מהאריח שבחרת.", "videoFromAuto": "מתחיל מתמונה ליד המרכז — הקש קודם על אריח כדי לבחור מאיפה להתחיל.", "videoKeepOn": "השאר את המסך דולק ואת האפליקציה פתוחה בזמן ההקלטה.", "makeVideo": "צור סרטון", "preparingVideo": "מכין את הסרטון…", "recordingVideo": "מקליט… נשארו {s} שנ׳", "videoReady": "הסרטון מוכן", "videoInfo": "{s} שניות · {f} · {mb}MB", "webmNote": "יש אפליקציות שלא מנגנות WebM — אם לא נפתח, שלח אותו כקובץ.", "videoFail": "לא הצלחתי ליצור סרטון במכשיר הזה", "videoUnsupported": "הדפדפן הזה לא יכול להקליט וידאו", "g8t": "קיר להדפסה וסרטון", "g8": "כל יצירה יכולה להפוך לקיר להדפסה (דפי A4/A3 ב-PDF). פסיפס יכול גם להפוך לסרטון זום."});
+Object.assign(LANG.ru, {"needShapeText": "Введите текст или число для формы", "ol_none": "Вся картина", "ol_heart": "Сердце", "ol_circle": "Круг", "ol_star": "Звезда", "ol_text": "Текст / число", "outline": "Форма мозаики", "shapeText": "Текст внутри формы", "outlineWithPhoto": "Используются только плитки внутри формы — вокруг остаётся чисто.", "outlineNoPhoto": "Основное фото не нужно: плитки сами выстроятся по цвету, как радуга, внутри формы.", "shapeBg": "Цвет вокруг формы", "useRainbow": "Без основного фото (радуга)", "wordsTitle": "Мозаика из слов", "wordsDesc": "Ваше фото, нарисованное именем или поздравлением", "wordsIntro": "Напишите имя, поздравление или дату. Фото видно только сквозь буквы, строка за строкой — чудесный подарок.", "wordsPhotoHint": "Фото, которое покажут слова", "wordsText": "Текст", "wordsPh": "например: С днём рождения, мама ♥", "lineSize": "Размер строки", "lineSizeHint": "Мельче строки = больше текста и деталей", "colorBoost": "Усиление цвета", "preview": "Предпросмотр", "printWall": "Стена для печати", "printWallIntro": "Делим картину на листы, печатаем дома и собираем на стене. На каждом листе метки реза и подпись (A1, A2…).", "paper": "Бумага", "orientation": "Ориентация", "or_port": "Книжная", "or_land": "Альбомная", "pagesAcross": "Листов по ширине", "wallInfo": "{c} × {r} = {n} листов · около {w} × {h} см", "downloadPdf": "Скачать PDF", "makingWall": "Готовлю листы", "loadingPdf": "Загружаю PDF-инструмент (один раз)…", "pageN": "Лист {n} из {t}", "wallDone": "PDF готов — листов: {n}", "pdfUnavailable": "Не удалось загрузить PDF-инструмент (нет сети?). Попробуйте онлайн.", "zoomVideo": "Видео с зумом", "zoomVideoIntro": "Короткое видео: начинается с одного фото и отдаляется, пока не появится вся мозаика. Для WhatsApp и сторис.", "videoFormat": "Формат", "vf_square": "Квадрат", "vf_story": "Сторис 9:16", "vf_wide": "Широкий 16:9", "videoLength": "Длина", "seconds": "{n} с", "videoFromSelected": "Начнётся с выбранной плитки.", "videoFromAuto": "Начнётся с фото у центра — сначала нажмите на плитку, чтобы выбрать начало.", "videoKeepOn": "Не выключайте экран и не закрывайте приложение во время записи.", "makeVideo": "Создать видео", "preparingVideo": "Готовлю видео…", "recordingVideo": "Запись… осталось {s} с", "videoReady": "Видео готово", "videoInfo": "{s} секунд · {f} · {mb} МБ", "webmNote": "Некоторые приложения не открывают WebM — тогда отправьте как файл.", "videoFail": "Не удалось создать видео на этом устройстве", "videoUnsupported": "Этот браузер не умеет записывать видео", "g8t": "Стена для печати и видео", "g8": "Любую работу можно превратить в стену для печати (листы A4/A3 в PDF). Мозаику — ещё и в видео с зумом."});
+Object.assign(LANG.es, {"needShapeText": "Escribe el texto o número para la forma", "ol_none": "Imagen completa", "ol_heart": "Corazón", "ol_circle": "Círculo", "ol_star": "Estrella", "ol_text": "Texto / número", "outline": "Forma del mosaico", "shapeText": "Texto dentro de la forma", "outlineWithPhoto": "Solo se usan las teselas dentro de la forma; alrededor queda limpio.", "outlineNoPhoto": "No hace falta foto principal: las teselas se ordenan por color, como un arcoíris, dentro de la forma.", "shapeBg": "Color alrededor de la forma", "useRainbow": "Sin foto principal (arcoíris)", "wordsTitle": "Mosaico de palabras", "wordsDesc": "Tu foto dibujada con un nombre o un saludo", "wordsIntro": "Escribe un nombre, un saludo o una fecha. La foto solo aparece a través de las letras, línea tras línea: un regalo precioso.", "wordsPhotoHint": "La foto que mostrarán las palabras", "wordsText": "Texto", "wordsPh": "p. ej.: Feliz cumpleaños mamá ♥", "lineSize": "Tamaño de línea", "lineSizeHint": "Líneas más pequeñas = más texto y más detalle", "colorBoost": "Realce de color", "preview": "Vista previa", "printWall": "Mural para imprimir", "printWallIntro": "Divide la imagen en hojas, imprímelas en casa y únelas en la pared. Cada hoja tiene marcas de corte y una etiqueta (A1, A2…).", "paper": "Papel", "orientation": "Orientación", "or_port": "Vertical", "or_land": "Horizontal", "pagesAcross": "Hojas a lo ancho", "wallInfo": "{c} × {r} = {n} hojas · unos {w} × {h} cm", "downloadPdf": "Descargar PDF", "makingWall": "Preparando las hojas", "loadingPdf": "Cargando la herramienta PDF (una vez)…", "pageN": "Hoja {n} de {t}", "wallDone": "PDF listo: {n} hojas", "pdfUnavailable": "No se pudo cargar la herramienta PDF (¿sin conexión?). Inténtalo con internet.", "zoomVideo": "Vídeo zoom", "zoomVideoIntro": "Un vídeo corto que empieza en una foto y se aleja hasta ver todo el mosaico. Ideal para WhatsApp e historias.", "videoFormat": "Formato", "vf_square": "Cuadrado", "vf_story": "Historia 9:16", "vf_wide": "Panorámico 16:9", "videoLength": "Duración", "seconds": "{n} s", "videoFromSelected": "Empieza en la tesela que elegiste.", "videoFromAuto": "Empieza en una foto cerca del centro; toca antes una tesela para elegir el inicio.", "videoKeepOn": "Deja la pantalla encendida y la app abierta mientras graba.", "makeVideo": "Crear vídeo", "preparingVideo": "Preparando el vídeo…", "recordingVideo": "Grabando… quedan {s} s", "videoReady": "Vídeo listo", "videoInfo": "{s} segundos · {f} · {mb} MB", "webmNote": "Algunas apps no reproducen WebM; si no se abre, envíalo como archivo.", "videoFail": "No se pudo crear el vídeo en este dispositivo", "videoUnsupported": "Este navegador no puede grabar vídeo", "g8t": "Mural y vídeo", "g8": "Cualquier creación puede ser un mural para imprimir (hojas A4/A3 en PDF). Un mosaico también puede ser un vídeo zoom."});
+Object.assign(LANG.ar, {"needShapeText": "اكتب النص أو الرقم للشكل", "ol_none": "الصورة كاملة", "ol_heart": "قلب", "ol_circle": "دائرة", "ol_star": "نجمة", "ol_text": "نص / رقم", "outline": "شكل الفسيفساء", "shapeText": "النص داخل الشكل", "outlineWithPhoto": "تُستخدم البلاطات داخل الشكل فقط — ويبقى ما حوله نظيفًا.", "outlineNoPhoto": "لا حاجة لصورة رئيسية: تترتب البلاطات حسب اللون، كقوس قزح، داخل الشكل.", "shapeBg": "اللون حول الشكل", "useRainbow": "بدون صورة رئيسية (قوس قزح)", "wordsTitle": "فسيفساء الكلمات", "wordsDesc": "صورتك مرسومة باسم أو تهنئة", "wordsIntro": "اكتب اسمًا أو تهنئة أو تاريخًا. تظهر الصورة فقط عبر الحروف، سطرًا بعد سطر — هدية جميلة.", "wordsPhotoHint": "الصورة التي ستُظهرها الكلمات", "wordsText": "النص", "wordsPh": "مثال: عيد ميلاد سعيد يا أمي ♥", "lineSize": "حجم السطر", "lineSizeHint": "أسطر أصغر = نص أكثر وتفاصيل أكثر", "colorBoost": "تعزيز اللون", "preview": "معاينة", "printWall": "جدار للطباعة", "printWallIntro": "قسّم الصورة إلى أوراق، اطبعها في البيت واجمعها على الجدار. في كل ورقة علامات قص وتسمية (A1، A2…).", "paper": "الورق", "orientation": "الاتجاه", "or_port": "عمودي", "or_land": "أفقي", "pagesAcross": "أوراق بالعرض", "wallInfo": "{c} × {r} = {n} ورقة · نحو {w} × {h} سم", "downloadPdf": "تنزيل PDF", "makingWall": "تجهيز الأوراق", "loadingPdf": "تحميل أداة PDF (مرة واحدة)…", "pageN": "ورقة {n} من {t}", "wallDone": "ملف PDF جاهز — {n} ورقة", "pdfUnavailable": "تعذّر تحميل أداة PDF (لا اتصال؟). حاول مجددًا مع الإنترنت.", "zoomVideo": "فيديو تكبير", "zoomVideoIntro": "فيديو قصير يبدأ من صورة واحدة ويبتعد حتى تظهر الفسيفساء كلها. رائع لواتساب والقصص.", "videoFormat": "الصيغة", "vf_square": "مربع", "vf_story": "قصة 9:16", "vf_wide": "عريض 16:9", "videoLength": "المدة", "seconds": "{n} ث", "videoFromSelected": "يبدأ من البلاطة التي اخترتها.", "videoFromAuto": "يبدأ من صورة قرب المركز — اضغط على بلاطة أولًا لاختيار البداية.", "videoKeepOn": "أبقِ الشاشة مضاءة والتطبيق مفتوحًا أثناء التسجيل.", "makeVideo": "إنشاء فيديو", "preparingVideo": "تجهيز الفيديو…", "recordingVideo": "جارٍ التسجيل… بقي {s} ث", "videoReady": "الفيديو جاهز", "videoInfo": "{s} ثانية · {f} · {mb} ميغابايت", "webmNote": "بعض التطبيقات لا تشغّل WebM — إن لم يُفتح فأرسله كملف.", "videoFail": "تعذّر إنشاء الفيديو على هذا الجهاز", "videoUnsupported": "هذا المتصفح لا يستطيع تسجيل الفيديو", "g8t": "جدار للطباعة وفيديو", "g8": "أي عمل يمكن أن يصبح جدارًا للطباعة (أوراق A4/A3 في PDF). والفسيفساء يمكن أن تصبح فيديو تكبير أيضًا."});
+LANG.en.scr_words = LANG.en.wordsTitle; LANG.he.scr_words = LANG.he.wordsTitle; LANG.ru.scr_words = LANG.ru.wordsTitle; LANG.es.scr_words = LANG.es.wordsTitle; LANG.ar.scr_words = LANG.ar.wordsTitle;
+
 /* ═══ CollageNest — screens: home, libraries, gallery, settings, about, guide, diagnostics, router, init ═══ */
 
 /* ── router (Android back button friendly) ── */
 const SCREENS = {
   home: renderHome, mosaic: renderMosaicSetup, collage: renderCollageSetup, libs: renderLibs, lib: renderLib,
-  gallery: renderGallery, auto: renderAutoSetup, view: renderViewer, settings: renderSettings, about: renderAbout, guide: renderGuide, diag: renderDiag
+  gallery: renderGallery, auto: renderAutoSetup, words: renderWordsSetup, view: renderViewer, settings: renderSettings, about: renderAbout, guide: renderGuide, diag: renderDiag
 };
-let cur = { s: 'home', a: null };
+let cur = { s: 'home', a: null }, SHOW_SEQ = 0;
 function go(s, a, replace) { const st = { s, a: a == null ? null : a }; if (replace) history.replaceState(st, ''); else history.pushState(st, ''); return show(st); }
 async function show(st) {
   if (!st || (!SCREENS[st.s] && st.s !== 'editor' && st.s !== 'collageEd' && st.s !== 'autoEd')) st = { s: 'home', a: null };
@@ -2989,7 +3383,8 @@ async function show(st) {
   if (st.s === 'editor') { if (!MS) return go('mosaic', null, true); Ed.open(); return; }
   if (st.s === 'collageEd') { if (!CS) return go('collage', null, true); CEd.open(); return; }
   if (st.s === 'autoEd') { if (!AS || !AS.prev) return go('auto', null, true); AEd.open(); return; }
-  try { await SCREENS[st.s](st.a); } catch (e) { logErr('screen ' + st.s + ': ' + (e && e.message)); $('main').innerHTML = '<div class="empty"><span class="em">⚠️</span>' + esc(T('screenFail')) + '</div>'; }
+  const tok = ++SHOW_SEQ;
+  try { await SCREENS[st.s](st.a); if (tok !== SHOW_SEQ && SCREENS[cur.s]) await SCREENS[cur.s](cur.a); /* a slower, older screen finished last → draw the current one again */ } catch (e) { logErr('screen ' + st.s + ': ' + (e && e.message)); $('main').innerHTML = '<div class="empty"><span class="em">⚠️</span>' + esc(T('screenFail')) + '</div>'; }
   window.scrollTo(0, 0);
 }
 addEventListener('popstate', e => {
@@ -3010,6 +3405,7 @@ async function renderHome() {
     '<button class="tile big" type="button" data-go="mosaic"><span class="em">🧩</span><b>' + esc(T('mosaicTitle')) + '</b><small>' + esc(T('mosaicDesc')) + '</small></button>' +
     '<button class="tile big" type="button" data-go="auto"><span class="em">✨</span><b>' + esc(T('autoTitle')) + '</b><small>' + esc(T('autoDesc')) + '</small></button>' +
     '<button class="tile" type="button" data-go="collage"><span class="em">🖼️</span><b>' + esc(T('collage')) + '</b><small>' + esc(T('collageDesc')) + '</small></button>' +
+    '<button class="tile" type="button" data-go="words"><span class="em">🔤</span><b>' + esc(T('wordsTitle')) + '</b><small>' + esc(T('wordsDesc')) + '</small></button>' +
     '<button class="tile" type="button" data-go="libs"><span class="em">📚</span><b>' + esc(T('scr_libs')) + '</b><small>' + esc(T('nLibs', { n: nf(libs.length) })) + '</small></button>' +
     '<button class="tile" type="button" data-go="gallery"><span class="em">🗂️</span><b>' + esc(T('scr_gallery')) + '</b><small>' + esc(T('nItems', { n: nf(gal.length) })) + '</small></button>' +
     '<button class="tile" type="button" data-go="settings"><span class="em">⚙️</span><b>' + esc(T('scr_settings')) + '</b><small>' + esc(T('settingsDesc')) + '</small></button>' +
@@ -3130,7 +3526,7 @@ async function renderGallery() {
   const items = (await DB.all('gallery')).sort((a, b) => b.created - a.created);
   let html = '<div class="screen">';
   if (!items.length) html += '<div class="empty"><span class="em">🗂️</span>' + esc(T('galEmpty')) + '</div><button class="btn primary big" type="button" data-go="mosaic">🧩 ' + esc(T('makeMosaic')) + '</button>';
-  else html += '<p class="muted small">' + esc(T('galNote')) + '</p><div class="gal">' + items.map(it => '<div class="lib" role="button" tabindex="0" data-g="' + it.id + '"><div class="cov"><img alt="" src="' + trackURL(URL.createObjectURL(it.thumb || it.blob)) + '"></div><div class="meta"><b>' + (it.kind === 'mosaic' ? '🧩 ' : it.kind === 'autocollage' ? '✨ ' : '🖼️ ') + esc(it.name) + '</b><small>' + esc(df(it.created)) + '</small></div><button class="ed" type="button" data-ed="' + it.id + '" aria-label="' + esc(T('edit')) + '">✏️</button></div>').join('') + '</div>';
+  else html += '<p class="muted small">' + esc(T('galNote')) + '</p><div class="gal">' + items.map(it => '<div class="lib" role="button" tabindex="0" data-g="' + it.id + '"><div class="cov"><img alt="" src="' + trackURL(URL.createObjectURL(it.thumb || it.blob)) + '"></div><div class="meta"><b>' + (it.kind === 'mosaic' ? '🧩 ' : it.kind === 'autocollage' ? '✨ ' : it.kind === 'words' ? '🔤 ' : '🖼️ ') + esc(it.name) + '</b><small>' + esc(df(it.created)) + '</small></div><button class="ed" type="button" data-ed="' + it.id + '" aria-label="' + esc(T('edit')) + '">✏️</button></div>').join('') + '</div>';
   $('main').innerHTML = html + '</div>';
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));
   document.querySelectorAll('[data-g]').forEach(el => {
@@ -3253,7 +3649,7 @@ async function wipeAll() {
 }
 
 /* ── guide / onboarding ── */
-const GUIDE = [['👋', 'g1t', 'g1'], ['🧩', 'g2t', 'g2'], ['📚', 'g3t', 'g3'], ['🔍', 'g4t', 'g4'], ['✨', 'g7t', 'g7'], ['🖼️', 'g5t', 'g5'], ['🔒', 'g6t', 'g6']];
+const GUIDE = [['👋', 'g1t', 'g1'], ['🧩', 'g2t', 'g2'], ['📚', 'g3t', 'g3'], ['🔍', 'g4t', 'g4'], ['✨', 'g7t', 'g7'], ['🖼️', 'g5t', 'g5'], ['🖨️', 'g8t', 'g8'], ['🔒', 'g6t', 'g6']];
 function onboarding() {
   let i = 0;
   const draw = () => '<div class="guide-em">' + GUIDE[i][0] + '</div><h3 style="text-align:center">' + esc(T(GUIDE[i][1])) + '</h3><p style="text-align:center" class="muted">' + esc(T(GUIDE[i][2])) + '</p><div class="steps">' + GUIDE.map((g, k) => '<i class="' + (k === i ? 'on' : '') + '"></i>').join('') + '</div>' +
