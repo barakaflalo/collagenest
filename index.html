@@ -222,7 +222,7 @@ pre.diag{white-space:pre-wrap;word-break:break-all;background:var(--bg3);border:
 <script>
 /* ═══ CollageNest · AppNest — core (storage, i18n helpers, UI shell) ═══ */
 'use strict';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const STORE_URL = 'https://appnest-store.pages.dev';
 const FEEDBACK_MAIL = 'appnest55@gmail.com';
 
@@ -260,18 +260,19 @@ const Store = (() => {
 /* ── IndexedDB: libs / tiles (Blob) / gallery (Blob) → memory fallback ── */
 const DB = (() => {
   let db = null, mem = null;
-  const STORES = ['libs', 'tiles', 'gallery'];
+  const STORES = ['libs', 'tiles', 'gallery', 'projects'];
   const initMem = () => { const m = {}; STORES.forEach(s => m[s] = new Map()); return m; };
   function open() {
     return new Promise(res => {
       if (!('indexedDB' in self)) { mem = initMem(); return res(false); }
       let r;
-      try { r = indexedDB.open('collagenest', 1); } catch (e) { mem = initMem(); return res(false); }
+      try { r = indexedDB.open('collagenest', 2); } catch (e) { mem = initMem(); return res(false); }
       r.onupgradeneeded = () => {
         const d = r.result;
         if (!d.objectStoreNames.contains('libs')) d.createObjectStore('libs', { keyPath: 'id' });
         if (!d.objectStoreNames.contains('tiles')) { const s = d.createObjectStore('tiles', { keyPath: 'id' }); s.createIndex('lib', 'libId'); }
         if (!d.objectStoreNames.contains('gallery')) d.createObjectStore('gallery', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('projects')) d.createObjectStore('projects', { keyPath: 'id' });
       };
       r.onsuccess = () => { db = r.result; res(true); };
       r.onerror = () => { mem = initMem(); res(false); };
@@ -417,6 +418,8 @@ function openModal(o) {
       acts.appendChild(b);
     });
   }
+  const opened = Date.now(); // the tap that opened a sheet must not also close it (touch → late click on the scrim)
+  wrap.addEventListener('click', e => { if (Date.now() - opened < 450) { e.preventDefault(); e.stopPropagation(); } }, true); // swallow the ghost click
   wrap.addEventListener('click', e => { if (e.target === wrap && !o.sticky) close(); });
   wrap.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !o.sticky) { e.stopPropagation(); close(); }
@@ -617,7 +620,7 @@ function cropToAspect(bw, bh, a) {
   if (bw / bh > a) { const sw = bh * a; return [(bw - sw) / 2, 0, sw, bh]; }
   const sh = bw / a; return [0, (bh - sh) / 2, bw, sh];
 }
-const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4 };
+const ASPECTS = { '1:1': 1, '4:3': 4 / 3, '3:4': 3 / 4, 'hex': Math.sqrt(3) / 2 };
 
 /* ── tile records (Blob ≤256px + mini ≤64px) ── */
 async function scaledBlob(src, sw, sh, maxSide, q) {
@@ -790,26 +793,54 @@ async function tileFeatures(minis, a, allowFlip) {
   return { feats, tileOf, flipOf, N, M };
 }
 
-/* grid geometry + target features */
-function gridFor(mainW, mainH, cols, a) {
-  const cellW = mainW / cols, cellH = cellW / a;
-  const rows = Math.max(1, Math.round(mainH / cellH));
-  const gar = cols * a / rows;
+/* grid geometry + target features.
+   Square grid: cell (cx,cy) at (cx·cw, cy·ch).
+   Hex grid (pointy-top, regular): odd rows shifted half a cell, rows 3/4 apart; the visible canvas is
+   cropped so that every pixel is covered (left/top edges start inside the first cells). Units: ch = 1, cw = a. */
+const HEX_A = Math.sqrt(3) / 2;
+function gridFor(mainW, mainH, cols, key) {
+  const hex = key === 'hex', a = ASPECTS[key] || 1;
+  let rows, vw, vh;
+  if (hex) { rows = Math.max(2, Math.round(((cols - 0.5) * a * mainH / mainW + 0.25) / 0.75)); vw = (cols - 0.5) * a; vh = 0.75 * rows - 0.25; }
+  else { rows = Math.max(1, Math.round(mainH / (mainW / cols / a))); vw = cols * a; vh = rows; }
+  const gar = vw / vh;
   let sw, sh; if (mainW / mainH > gar) { sh = mainH; sw = mainH * gar; } else { sw = mainW; sh = mainW / gar; }
-  return { cols, rows, a, src: { x: (mainW - sw) / 2, y: (mainH - sh) / 2, w: sw, h: sh } };
+  return { cols, rows, a, hex, src: { x: (mainW - sw) / 2, y: (mainH - sh) / 2, w: sw, h: sh } };
+}
+function cellPos(m, i, cw, ch) { const cx = i % m.cols, cy = (i / m.cols) | 0; return m.hex ? [(cx + (cy & 1) * 0.5 - 0.5) * cw, (cy * 0.75 - 0.25) * ch] : [cx * cw, cy * ch]; }
+function canvasSize(m, cw, ch) { return m.hex ? [Math.round((m.cols - 0.5) * cw), Math.round((0.75 * m.rows - 0.25) * ch)] : [m.cols * cw, m.rows * ch]; }
+function gridUnits(m) { return m.hex ? [(m.cols - 0.5) * m.a, 0.75 * m.rows - 0.25] : [m.cols * m.a, m.rows]; }
+function cellAt(m, ux, uy, cw, ch) { // canvas px → cell index (or -1)
+  if (!m.hex) { const cx = Math.floor(ux / cw), cy = Math.floor(uy / ch); return (cx < 0 || cy < 0 || cx >= m.cols || cy >= m.rows) ? -1 : cy * m.cols + cx; }
+  const cy0 = Math.floor((uy / ch + 0.25) / 0.75); let best = -1, bd = 1e18;
+  for (let cy = cy0 - 1; cy <= cy0 + 1; cy++) {
+    if (cy < 0 || cy >= m.rows) continue;
+    const cx0 = Math.floor(ux / cw + 0.5 - (cy & 1) * 0.5);
+    for (let cx = cx0 - 1; cx <= cx0 + 1; cx++) {
+      if (cx < 0 || cx >= m.cols) continue;
+      const i = cy * m.cols + cx, [px, py] = cellPos(m, i, cw, ch), dx = (ux - px - cw / 2) / cw, dy = (uy - py - ch / 2) / ch, d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = i; }
+    }
+  }
+  return bd < 0.6 ? best : -1;
 }
 function targetFeatures(main, g) {
-  const SS = 4, W = g.cols * G * SS, H = g.rows * G * SS;
+  const U = G * 4; // 12 sample px per cell height and per cell width
+  const exW = g.hex ? g.cols + 0.5 : g.cols, exH = g.hex ? 0.75 * (g.rows - 1) + 1 : g.rows;
+  const W = Math.round(exW * U), H = Math.round(exH * U);
+  const vx = g.hex ? U / 2 : 0, vy = g.hex ? U / 4 : 0, vw = g.hex ? (g.cols - 0.5) * U : W, vh = g.hex ? (0.75 * g.rows - 0.25) * U : H;
   const c = mkCanvas(W, H), x = c.getContext('2d', { willReadFrequently: true });
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
-  x.drawImage(main, g.src.x, g.src.y, g.src.w, g.src.h, 0, 0, W, H);
+  if (g.hex) x.drawImage(main, g.src.x, g.src.y, g.src.w, g.src.h, 0, 0, W, H); // edge padding for cells that stick out
+  x.drawImage(main, g.src.x, g.src.y, g.src.w, g.src.h, vx, vy, vw, vh);
   const data = x.getImageData(0, 0, W, H).data;
   const C = g.cols * g.rows, feats = new Float32Array(C * FD), rgb = new Uint8Array(C * 3);
-  const cw = G * SS, ch = G * SS, buf = new Uint8ClampedArray(cw * ch * 4);
+  const buf = new Uint8ClampedArray(U * U * 4);
   for (let cy = 0; cy < g.rows; cy++) for (let cx = 0; cx < g.cols; cx++) {
-    for (let y = 0; y < ch; y++) { const s = ((cy * ch + y) * W + cx * cw) * 4; buf.set(data.subarray(s, s + cw * 4), y * cw * 4); }
+    const x0 = Math.min(W - U, Math.round(g.hex ? (cx + (cy & 1) * 0.5) * U : cx * U)), y0 = Math.min(H - U, Math.round(g.hex ? cy * 0.75 * U : cy * U));
+    for (let y = 0; y < U; y++) { const s0 = ((y0 + y) * W + x0) * 4; buf.set(data.subarray(s0, s0 + U * 4), y * U * 4); }
     const ci = cy * g.cols + cx;
-    blockFeatures(buf, cw, ch, feats, ci * FD, rgb, ci * 3);
+    blockFeatures(buf, U, U, feats, ci * FD, rgb, ci * 3);
   }
   return { feats, rgb };
 }
@@ -881,61 +912,59 @@ function runMatch(data, p) {
 }
 
 /* ── rendering (same function for preview, zoomed view and export = WYSIWYG) ── */
-function drawCell(x, m, i, px, py, w, h, bmp, st) {
+function cellPath(x, m, X, Y, W, H, st) {
+  x.beginPath();
+  if (m.hex) { const e = st.grout > 0 ? 0 : 0.6; x.moveTo(X + W / 2, Y - e); x.lineTo(X + W + e, Y + H / 4); x.lineTo(X + W + e, Y + H * 3 / 4); x.lineTo(X + W / 2, Y + H + e); x.lineTo(X - e, Y + H * 3 / 4); x.lineTo(X - e, Y + H / 4); x.closePath(); }
+  else if (st.shape === 'circle') x.ellipse(X + W / 2, Y + H / 2, W / 2, H / 2, 0, 0, Math.PI * 2);
+  else if (st.shape === 'rounded' && x.roundRect) x.roundRect(X, Y, W, H, Math.min(W, H) * 0.2);
+  else x.rect(X, Y, W, H);
+}
+function drawCell(x, m, i, px, py, w, h, bmp, st, FW, FH) {
   const e = m.assign[i]; if (e < 0 || !bmp) return;
   const g = st.grout > 0 ? Math.max(0.5, st.grout * Math.min(w, h) / 60) : 0;
   const X = px + g / 2, Y = py + g / 2, W = w - g, H = h - g;
   const [sx, sy, sw, sh] = cropToAspect(bmp.width, bmp.height, m.a);
   x.save();
-  if (st.shape !== 'square') {
-    x.beginPath();
-    if (st.shape === 'circle') x.ellipse(X + W / 2, Y + H / 2, W / 2, H / 2, 0, 0, Math.PI * 2);
-    else if (x.roundRect) x.roundRect(X, Y, W, H, Math.min(W, H) * 0.2);
-    else x.rect(X, Y, W, H);
-    x.clip();
-  }
+  if (m.hex || st.shape !== 'square') { cellPath(x, m, X, Y, W, H, st); x.clip(); }
   if (m.flipOf[e]) { x.save(); x.translate(X + W, Y); x.scale(-1, 1); x.drawImage(bmp, sx, sy, sw, sh, 0, 0, W, H); x.restore(); }
   else x.drawImage(bmp, sx, sy, sw, sh, X, Y, W, H);
   if (st.tint > 0) { const r = m.rgb; x.globalAlpha = st.tint / 100; x.fillStyle = 'rgb(' + r[i * 3] + ',' + r[i * 3 + 1] + ',' + r[i * 3 + 2] + ')'; x.fillRect(X, Y, W, H); }
-  if (st.overlay > 0 && m.main) {
-    const cx = i % m.cols, cy = (i / m.cols) | 0, s = m.src, uw = s.w / m.cols, uh = s.h / m.rows;
-    const gx = g / 2 / w * uw, gy = g / 2 / h * uh;
-    x.globalAlpha = st.overlay / 100;
-    x.drawImage(m.main, s.x + cx * uw + gx, s.y + cy * uh + gy, uw - 2 * gx, uh - 2 * gy, X, Y, W, H);
+  if (st.overlay > 0 && m.main && FW) { // the matching piece of the main photo (same mapping at every size)
+    const s = m.src; x.globalAlpha = st.overlay / 100;
+    x.drawImage(m.main, s.x + X / FW * s.w, s.y + Y / FH * s.h, W / FW * s.w, H / FH * s.h, X, Y, W, H);
   }
   x.restore();
 }
-function paintBackground(x, W, H, st) {
-  x.fillStyle = st.grout > 0 ? st.groutColor : (st.shape === 'square' ? '#000' : st.groutColor);
+function paintBackground(x, W, H, st, m) {
+  x.fillStyle = (st.grout > 0 || st.shape !== 'square' || (m && m.hex)) ? st.groutColor : '#000';
   x.fillRect(0, 0, W, H);
 }
 /* build preview composite from minis */
 function buildComposite(m, st) {
-  const P = clamp(Math.floor(2400 / Math.max(m.cols * m.a, m.rows)), 8, 48);
-  const cw = Math.max(2, Math.round(P * m.a)), ch = P;
-  const c = document.createElement('canvas'); c.width = cw * m.cols; c.height = ch * m.rows;
+  const [uw, uh] = gridUnits(m);
+  const P = clamp(Math.floor(2400 / Math.max(uw, uh)), 8, 48);
+  const cw = Math.max(2, Math.round(P * m.a)), ch = P, [W, H] = canvasSize(m, cw, ch);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
-  paintBackground(x, c.width, c.height, st);
-  for (let i = 0; i < m.assign.length; i++) {
-    const cx = i % m.cols, cy = (i / m.cols) | 0;
-    drawCell(x, m, i, cx * cw, cy * ch, cw, ch, m.minis[m.tileOf[m.assign[i]]], st);
-  }
+  paintBackground(x, W, H, st, m);
+  for (let i = 0; i < m.assign.length; i++) { const [px, py] = cellPos(m, i, cw, ch); drawCell(x, m, i, px, py, cw, ch, m.minis[m.tileOf[m.assign[i]]], st, W, H); }
   m.comp = c; m.cw = cw; m.ch = ch;
   return c;
 }
 function updateCompositeCell(m, i, st) {
-  const x = m.comp.getContext('2d'), cx = i % m.cols, cy = (i / m.cols) | 0;
-  x.save(); x.beginPath(); x.rect(cx * m.cw, cy * m.ch, m.cw, m.ch); x.clip();
-  paintBackground(x, m.comp.width, m.comp.height, st); x.restore();
-  drawCell(x, m, i, cx * m.cw, cy * m.ch, m.cw, m.ch, m.minis[m.tileOf[m.assign[i]]], st);
+  const x = m.comp.getContext('2d'), [px, py] = cellPos(m, i, m.cw, m.ch);
+  x.save(); cellPath(x, m, px, py, m.cw, m.ch, Object.assign({}, st, { shape: 'square', grout: 1 })); x.clip();
+  paintBackground(x, m.comp.width, m.comp.height, st, m); x.restore();
+  drawCell(x, m, i, px, py, m.cw, m.ch, m.minis[m.tileOf[m.assign[i]]], st, m.comp.width, m.comp.height);
 }
 /* export size for a long side (integer cells → no seams) */
 function exportDims(m, long) {
-  const unit = long / Math.max(m.cols * m.a, m.rows);
+  const [uw, uh] = gridUnits(m), unit = long / Math.max(uw, uh);
   let ch = Math.max(2, Math.round(unit)), cw = Math.max(2, Math.round(unit * m.a));
   const maxArea = isCoarse() ? 24e6 : 64e6;
-  while (cw * m.cols * ch * m.rows > maxArea && ch > 2) { ch--; cw = Math.max(2, Math.round(ch * m.a)); }
-  return { cw, ch, W: cw * m.cols, H: ch * m.rows };
+  let [W, H] = canvasSize(m, cw, ch);
+  while (W * H > maxArea && ch > 2) { ch--; cw = Math.max(2, Math.round(ch * m.a)); [W, H] = canvasSize(m, cw, ch); }
+  return { cw, ch, W, H };
 }
 /* full-quality export: decode each 256px tile once, draw all of its cells, release */
 async function renderExport(m, st, long, p, sign) {
@@ -943,7 +972,7 @@ async function renderExport(m, st, long, p, sign) {
   const c = document.createElement('canvas'); c.width = d.W; c.height = d.H;
   const x = c.getContext('2d'); if (!x) throw new Error('canvas');
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
-  paintBackground(x, d.W, d.H, st);
+  paintBackground(x, d.W, d.H, st, m);
   const byTile = new Map();
   for (let i = 0; i < m.assign.length; i++) { const t = m.tileOf[m.assign[i]]; if (!byTile.has(t)) byTile.set(t, []); byTile.get(t).push(i); }
   let k = 0; const n = byTile.size;
@@ -951,7 +980,7 @@ async function renderExport(m, st, long, p, sign) {
     if (p && p.cancelled) throw new Error('cancel');
     let b = null;
     try { b = await createImageBitmap(m.tiles[t].blob); } catch (e) { b = m.minis[t]; }
-    for (const i of cells) drawCell(x, m, i, (i % m.cols) * d.cw, ((i / m.cols) | 0) * d.ch, d.cw, d.ch, b, st);
+    for (const i of cells) { const [px, py] = cellPos(m, i, d.cw, d.ch); drawCell(x, m, i, px, py, d.cw, d.ch, b, st, d.W, d.H); }
     if (b !== m.minis[t]) try { b.close(); } catch (e) {}
     k++; if (p && k % 20 === 0) { p.set(k / n * 0.9, T('renderingN', { n: nf(k), t: nf(n) })); await yieldUI(); }
   }
@@ -986,7 +1015,7 @@ function varietyParams(v, C, N) {
   return { maxRep: Math.max(1, Math.ceil(C / N * 2)), R: 2 };
 }
 async function setMain(bmp, name) {
-  if (Setup.main) try { Setup.main.close(); } catch (e) {}
+  if (Setup.main && !(MS && MS.main === Setup.main)) try { Setup.main.close(); } catch (e) {}
   const max = 3000;
   if (Math.max(bmp.width, bmp.height) > max) {
     const s = max / Math.max(bmp.width, bmp.height), c = mkCanvas(Math.round(bmp.width * s), Math.round(bmp.height * s));
@@ -1018,6 +1047,7 @@ async function renderMosaicSetup() {
   const m = S.mosaic;
   let html = '';
   if (MS) html += '<button class="btn primary big" id="resumeEd" type="button" style="margin-bottom:14px">✏️ ' + esc(T('resumeMosaic')) + '</button>';
+  html += await projectsCardHTML();
   html += '<div class="card"><h3><span class="num">1</span>' + esc(T('mainPhoto')) + '</h3>' +
     '<button class="pickbox" id="pickMain" type="button">' + (Setup.main ? '<canvas id="mainThumb"></canvas>' : '<span class="em">🖼️</span>') +
     '<span><b>' + esc(Setup.main ? (Setup.mainName || T('mainChosen')) : T('pickMain')) + '</b><br><small class="muted">' + esc(Setup.main ? T('tapToChange') + ' · ' + nf(Setup.main.width) + '×' + nf(Setup.main.height) : T('pickMainHint')) + '</small></span></button>' +
@@ -1036,13 +1066,13 @@ async function renderMosaicSetup() {
   if (lib && lib.count < 60) html += '<div class="note">' + esc(T('fewTiles', { n: nf(lib.count) })) + '</div>';
   html += '</div>';
 
-  const g = Setup.main ? gridFor(Setup.main.width, Setup.main.height, m.cols, ASPECTS[m.aspect]) : null;
+  const g = Setup.main ? gridFor(Setup.main.width, Setup.main.height, m.cols, m.aspect) : null;
   html += '<div class="card"><h3><span class="num">3</span>' + esc(T('mosaicSettings')) + '</h3>' +
     '<label class="f" for="colsR">' + esc(T('tilesAcross')) + ': <span class="val" id="colsV">' + nf(m.cols) + '</span></label>' +
     '<input type="range" id="colsR" min="15" max="150" step="1" value="' + m.cols + '">' +
     '<div class="small muted" id="gridInfo">' + (g ? esc(T('gridInfo', { c: nf(g.cols), r: nf(g.rows), n: nf(g.cols * g.rows) })) : esc(T('gridNeedsMain'))) + '</div>' +
     '<label class="f">' + esc(T('tileShape')) + '</label><div class="seg" data-k="aspect">' +
-    ['1:1', '4:3', '3:4'].map(a => '<button type="button" data-v="' + a + '" class="' + (m.aspect === a ? 'on' : '') + '">' + esc(T('asp_' + a.replace(':', '_'))) + '</button>').join('') + '</div>' +
+    ['1:1', '4:3', '3:4', 'hex'].map(a => '<button type="button" data-v="' + a + '" class="' + (m.aspect === a ? 'on' : '') + '">' + esc(T('asp_' + a.replace(':', '_'))) + '</button>').join('') + '</div>' +
     '<label class="f">' + esc(T('variety')) + '</label><div class="seg" data-k="variety">' +
     ['low', 'med', 'high'].map(v => '<button type="button" data-v="' + v + '" class="' + (m.variety === v ? 'on' : '') + '">' + esc(T('var_' + v)) + '</button>').join('') + '</div>' +
     '<div class="small muted" style="margin-top:6px">' + esc(T('varietyHint')) + '</div>' +
@@ -1052,6 +1082,7 @@ async function renderMosaicSetup() {
 
   if (Setup.main && $('mainThumb')) drawThumbInto($('mainThumb'), Setup.main);
   if ($('resumeEd')) $('resumeEd').onclick = () => go('editor');
+  bindProjects(renderMosaicSetup);
   $('pickMain').onclick = async () => {
     const f = (await pickFiles('one'))[0]; if (!f) return;
     const p = Prog.show(T('loadingPhoto'), false);
@@ -1081,7 +1112,7 @@ async function renderMosaicSetup() {
   if ($('demoLib')) $('demoLib').onclick = async () => { const l = await makeDemoLibrary(); S.mosaic.lib = l.id; saveS(); toast(T('demoReady')); renderMosaicSetup(); };
   $('colsR').oninput = e => {
     m.cols = +e.target.value; $('colsV').textContent = nf(m.cols);
-    if (Setup.main) { const g2 = gridFor(Setup.main.width, Setup.main.height, m.cols, ASPECTS[m.aspect]); $('gridInfo').textContent = T('gridInfo', { c: nf(g2.cols), r: nf(g2.rows), n: nf(g2.cols * g2.rows) }); }
+    if (Setup.main) { const g2 = gridFor(Setup.main.width, Setup.main.height, m.cols, m.aspect); $('gridInfo').textContent = T('gridInfo', { c: nf(g2.cols), r: nf(g2.rows), n: nf(g2.cols * g2.rows) }); }
   };
   $('colsR').onchange = () => saveS();
   document.querySelectorAll('.seg[data-k]').forEach(sg => sg.querySelectorAll('button').forEach(b => b.onclick = () => { m[sg.dataset.k] = b.dataset.v; saveS(); renderMosaicSetup(); }));
@@ -1108,10 +1139,10 @@ async function createMosaic(reseed) {
       p.set(0.27, T('analyzing'));
       const tf = await tileFeatures(cache.minis, a, m.flip);
       if (p.cancelled) throw new Error('cancel');
-      const g = gridFor(Setup.main.width, Setup.main.height, m.cols, a);
+      const g = gridFor(Setup.main.width, Setup.main.height, m.cols, m.aspect);
       p.set(0.33, T('analyzing')); await yieldUI();
       const tg = targetFeatures(Setup.main, g);
-      ms = { main: Setup.main, name: Setup.mainName, libId: m.lib, tiles: cache.tiles, minis: cache.minis, cols: g.cols, rows: g.rows, a, src: g.src,
+      ms = { main: Setup.main, name: Setup.mainName, libId: m.lib, tiles: cache.tiles, minis: cache.minis, cols: g.cols, rows: g.rows, a, hex: g.hex, aspect: m.aspect, src: g.src,
         tf: tf.feats, tileOf: tf.tileOf, flipOf: tf.flipOf, N: tf.N, cf: tg.feats, rgb: tg.rgb, variety: m.variety };
     }
     const C = ms.cols * ms.rows, vp = varietyParams(ms.variety, C, ms.N);
@@ -1144,6 +1175,7 @@ const Ed = {
       '<button class="btn" id="edStyle" type="button" aria-expanded="false"><span class="i">🎨</span><span>' + esc(T('style')) + '</span></button>' +
       '<button class="btn primary" id="edExport" type="button"><span class="i">⬇️</span><span>' + esc(T('exportSave')) + '</span></button>' +
       '<button class="btn" id="edShuffle" type="button"><span class="i">🔀</span><span>' + esc(T('reshuffle')) + '</span></button>' +
+      '<button class="btn" id="edProject" type="button"><span class="i">💾</span><span>' + esc(T('saveProject')) + '</span></button>' +
       '<button class="btn ghost" id="edSettings" type="button"><span class="i">⚙️</span><span>' + esc(T('changeSetup')) + '</span></button></div></div>';
     ed.classList.remove('hidden');
     this.cv = $('edCv'); this.x = this.cv.getContext('2d'); this.sel = -1;
@@ -1153,6 +1185,7 @@ const Ed = {
     $('edStyle').onclick = () => this.toggleStyle();
     $('edExport').onclick = () => exportSheet();
     $('edShuffle').onclick = () => createMosaic(true);
+    $('edProject').onclick = saveProject;
     $('edSettings').onclick = () => go('mosaic');
     this.bindGestures();
     if (this.ro) this.ro.disconnect();
@@ -1196,22 +1229,26 @@ const Ed = {
     x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
     if (cellPx <= m.ch * 1.5) x.drawImage(m.comp, 0, 0);
     else {
-      const c0 = clamp(Math.floor(-this.tx / this.s / m.cw), 0, m.cols - 1), c1 = clamp(Math.ceil((this.W - this.tx) / this.s / m.cw), 0, m.cols);
-      const r0 = clamp(Math.floor(-this.ty / this.s / m.ch), 0, m.rows - 1), r1 = clamp(Math.ceil((this.H - this.ty) / this.s / m.ch), 0, m.rows);
-      x.save(); x.beginPath(); x.rect(c0 * m.cw, r0 * m.ch, (c1 - c0) * m.cw, (r1 - r0) * m.ch); x.clip();
-      paintBackground(x, m.comp.width, m.comp.height, st); x.restore();
+      const vx0 = -this.tx / this.s, vy0 = -this.ty / this.s, vx1 = (this.W - this.tx) / this.s, vy1 = (this.H - this.ty) / this.s;
+      const rs = m.hex ? 0.75 : 1, ro = m.hex ? 0.25 : 0, co = m.hex ? 0.5 : 0;
+      const c0 = clamp(Math.floor(vx0 / m.cw - 1 + co), 0, m.cols - 1), c1 = clamp(Math.ceil(vx1 / m.cw + 1 + co), 0, m.cols);
+      const r0 = clamp(Math.floor((vy0 / m.ch + ro) / rs - 1), 0, m.rows - 1), r1 = clamp(Math.ceil((vy1 / m.ch + ro) / rs + 1), 0, m.rows);
+      x.save(); x.beginPath(); x.rect(Math.max(0, vx0), Math.max(0, vy0), Math.min(m.comp.width, vx1) - Math.max(0, vx0), Math.min(m.comp.height, vy1) - Math.max(0, vy0)); x.clip();
+      paintBackground(x, m.comp.width, m.comp.height, st, m);
       const wantHi = cellPx > 70;
       for (let cy = r0; cy < r1; cy++) for (let cx = c0; cx < c1; cx++) {
         const i = cy * m.cols + cx, t = m.tileOf[m.assign[i]];
         let b = wantHi ? this.hi.get(t) : null;
         if (wantHi && !b) this.loadHi(t);
-        drawCell(x, m, i, cx * m.cw, cy * m.ch, m.cw, m.ch, b || m.minis[t], st);
+        const [px, py] = cellPos(m, i, m.cw, m.ch);
+        drawCell(x, m, i, px, py, m.cw, m.ch, b || m.minis[t], st, m.comp.width, m.comp.height);
       }
+      x.restore();
     }
     if (this.sel >= 0) {
-      const cx = this.sel % m.cols, cy = (this.sel / m.cols) | 0;
+      const [px, py] = cellPos(m, this.sel, m.cw, m.ch);
       x.lineWidth = 3 / this.s; x.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#d4af37';
-      x.strokeRect(cx * m.cw, cy * m.ch, m.cw, m.ch);
+      cellPath(x, m, px, py, m.cw, m.ch, { shape: 'square', grout: 1 }); x.stroke();
     }
   },
   loadHi(t) {
@@ -1256,9 +1293,9 @@ const Ed = {
   },
   tap(px, py) {
     const m = MS, ux = (px - this.tx) / this.s, uy = (py - this.ty) / this.s;
-    const cx = Math.floor(ux / m.cw), cy = Math.floor(uy / m.ch);
-    if (cx < 0 || cy < 0 || cx >= m.cols || cy >= m.rows) { this.sel = -1; this.redraw(); return; }
-    this.sel = cy * m.cols + cx; this.redraw(); swapSheet(this.sel);
+    const i = (ux < 0 || uy < 0 || ux > m.comp.width || uy > m.comp.height) ? -1 : cellAt(m, ux, uy, m.cw, m.ch);
+    if (i < 0) { this.sel = -1; this.redraw(); return; }
+    this.sel = i; this.redraw(); swapSheet(this.sel);
   },
   apply(i, e, rec) {
     const prev = MS.assign[i]; if (prev === e) return;
@@ -1279,8 +1316,8 @@ const Ed = {
       '<div><label class="f" for="stGrout">' + esc(T('grout')) + ': <span class="val" id="vGrout">' + st.grout + '</span></label><input type="range" id="stGrout" min="0" max="8" value="' + st.grout + '"></div>' +
       '<div><label class="f">' + esc(T('groutColor')) + '</label><div class="swatches" id="stGC">' + ['#000000', '#ffffff', '#d4af37', '#1c2a44', '#7a1f2b'].map(c => '<button type="button" data-c="' + c + '" class="' + (st.groutColor === c ? 'on' : '') + '" style="background:' + c + '" aria-label="' + c + '"></button>').join('') +
       '<input type="color" id="stGCi" value="' + st.groutColor + '" aria-label="' + esc(T('customColor')) + '"></div></div>' +
-      '</div><label class="f">' + esc(T('shape')) + '</label><div class="seg" id="stShape">' +
-      ['square', 'rounded', 'circle'].map(v => '<button type="button" data-v="' + v + '" class="' + (st.shape === v ? 'on' : '') + '">' + esc(T('sh_' + v)) + '</button>').join('') + '</div>';
+      '</div>' + (MS.hex ? '' : '<label class="f">' + esc(T('shape')) + '</label><div class="seg" id="stShape">' +
+      ['square', 'rounded', 'circle'].map(v => '<button type="button" data-v="' + v + '" class="' + (st.shape === v ? 'on' : '') + '">' + esc(T('sh_' + v)) + '</button>').join('') + '</div>');
     p.classList.remove('hidden');
     let tmr = 0;
     const rebuild = () => { clearTimeout(tmr); tmr = setTimeout(() => { buildComposite(MS, st); MS.saved = false; this.redraw(); saveS(); }, 60); };
@@ -1288,7 +1325,7 @@ const Ed = {
     bindR('stTint', 'tint', 'vTint', '%'); bindR('stOver', 'overlay', 'vOver', '%'); bindR('stGrout', 'grout', 'vGrout');
     $('stGC').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { st.groutColor = b.dataset.c; $('stGC').querySelectorAll('[data-c]').forEach(z => z.classList.toggle('on', z === b)); $('stGCi').value = st.groutColor; rebuild(); });
     $('stGCi').oninput = e => { st.groutColor = e.target.value; $('stGC').querySelectorAll('[data-c]').forEach(z => z.classList.remove('on')); rebuild(); };
-    $('stShape').querySelectorAll('button').forEach(b => b.onclick = () => { st.shape = b.dataset.v; $('stShape').querySelectorAll('button').forEach(z => z.classList.toggle('on', z === b)); rebuild(); });
+    if ($('stShape')) $('stShape').querySelectorAll('button').forEach(b => b.onclick = () => { st.shape = b.dataset.v; $('stShape').querySelectorAll('button').forEach(z => z.classList.toggle('on', z === b)); rebuild(); });
   }
 };
 
@@ -1453,15 +1490,15 @@ async function decodeForCollage(files, n) {
   p.close();
   return out;
 }
-async function newCollage() {
-  let files = (await pickFiles('many')).filter(isImageFile);
+async function newCollage(given) {
+  let files = (given && given.length ? given : await pickFiles('many')).filter(isImageFile);
   if (!files.length) return;
   if (files.length > MAX_COLLAGE) { toast(T('collageMax', { n: MAX_COLLAGE }), true); files = files.slice(0, MAX_COLLAGE); }
   const bmps = await decodeForCollage(files, files.length);
   if (!bmps.length) return;
   if (CS) CS.photos.forEach(b => { try { b.close(); } catch (e) {} });
   const ti = bestTpl(bmps.length);
-  CS = { photos: bmps, tpl: ti, cells: [], sel: -1, swap: -1, saved: false };
+  CS = { photos: bmps, tpl: ti, cells: [], sel: -1, swap: -1, saved: false, text: newText() };
   layoutCells();
   go('collageEd');
 }
@@ -1505,6 +1542,7 @@ function drawCollage(x, W, H, preview) {
       x.setLineDash(i === CS.swap ? [12, 8] : []); x.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2); x.restore();
     }
   });
+  drawTitle(x, W, H, CS.text);
 }
 function collageDims(long) { const a = RATIOS[S.collage.ratio] || 1; return a >= 1 ? { W: long, H: Math.round(long / a) } : { W: Math.round(long * a), H: long }; }
 
@@ -1612,6 +1650,7 @@ const CEd = {
     acts.innerHTML = '<button class="btn' + (pan === 'tpl' ? ' primary' : '') + '" data-p="tpl" type="button"><span class="i">🧩</span><span>' + esc(T('template')) + '</span></button>' +
       '<button class="btn' + (pan === 'ratio' ? ' primary' : '') + '" data-p="ratio" type="button"><span class="i">📐</span><span>' + esc(T('ratio')) + '</span></button>' +
       '<button class="btn' + (pan === 'style' ? ' primary' : '') + '" data-p="style" type="button"><span class="i">🎨</span><span>' + esc(T('style')) + '</span></button>' +
+      '<button class="btn" id="ceText" type="button"><span class="i">🔤</span><span>' + esc(T('text')) + '</span></button>' +
       '<button class="btn" id="ceAdd" type="button"><span class="i">➕</span><span>' + esc(T('photos')) + '</span></button>' +
       '<button class="btn primary" id="ceExport" type="button"><span class="i">⬇️</span><span>' + esc(T('exportSave')) + '</span></button>';
     acts.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { this.panel = this.panel === b.dataset.p ? null : b.dataset.p; this.dockUI(); });
@@ -1623,6 +1662,7 @@ const CEd = {
       $('ceBg').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { st.bg = b.dataset.c; $('ceBgI').value = st.bg; saveS(); this.paint(); this.dockUI(); });
       $('ceBgI').oninput = e => { st.bg = e.target.value; saveS(); this.paint(); };
     }
+    $('ceText').onclick = () => { if (!CS.text) CS.text = newText(); textSheet(CS.text, () => { CS.saved = false; this.paint(); }); };
     $('ceAdd').onclick = async () => {
       let files = (await pickFiles('many')).filter(isImageFile); if (!files.length) return;
       const room = MAX_COLLAGE - CS.photos.length; if (room <= 0) { toast(T('collageMax', { n: MAX_COLLAGE }), true); return; }
@@ -2059,7 +2099,7 @@ async function analyseFiles(files) {
   }
   p.close();
   if (!ps.length) { toast(T('decodeFail'), true); return; }
-  AS = { ps, chosen: [], ratio: S.auto.ratio, seed: (Math.random() * 4e9) >>> 0, L: null, LM: null, prev: null, saved: false };
+  AS = { ps, text: (AS && AS.text) || newText(), chosen: [], ratio: S.auto.ratio, seed: (Math.random() * 4e9) >>> 0, L: null, LM: null, prev: null, saved: false };
   reselect();
   if (AS_faceState === 'fail') toast(T('facesUnavailable'), true);
   else if (failed) toast(T('failedN', { n: nf(failed) }), true);
@@ -2130,6 +2170,7 @@ const AEd = {
       '<div class="stage" id="astage" style="background:var(--bg)"><canvas id="aeCv" aria-label="' + esc(T('autoCanvas')) + '"></canvas><div class="hint" id="aeHint">' + esc(T('autoEdHint')) + '</div></div>' +
       '<div class="dock"><div class="acts">' +
       '<button class="btn" id="aeShuffle" type="button"><span class="i">🔀</span><span>' + esc(T('otherLayout')) + '</span></button>' +
+      '<button class="btn" id="aeText" type="button"><span class="i">🔤</span><span>' + esc(T('text')) + '</span></button>' +
       '<button class="btn" id="aeStyle" type="button"><span class="i">🎨</span><span>' + esc(T('style')) + '</span></button>' +
       '<button class="btn" id="aeSeams" type="button" aria-pressed="false"><span class="i">👁</span><span>' + esc(T('showSeams')) + '</span></button>' +
       '<button class="btn ghost" id="aePhotos" type="button"><span class="i">🖼️</span><span>' + esc(T('photos')) + '</span></button>' +
@@ -2142,6 +2183,7 @@ const AEd = {
     $('aeSeams').onclick = () => { this.seams = !this.seams; $('aeSeams').setAttribute('aria-pressed', this.seams); $('aeSeams').classList.toggle('primary', this.seams); this.paint(); };
     $('aeExport').onclick = autoExport;
     $('aeStyle').onclick = autoStyleSheet;
+    $('aeText').onclick = () => { if (!AS.text) AS.text = newText(); textSheet(AS.text, () => this.paint()); };
     $('aeSeams').classList.toggle('hidden', S.auto.style !== 'blend');
     this.cv.addEventListener('click', e => this.tap(e.offsetX, e.offsetY));
     if (this.ro) this.ro.disconnect();
@@ -2167,6 +2209,7 @@ const AEd = {
       const LM = AS.LM, cw = W / LM.LW, ch = H / LM.LH; x.fillStyle = '#ffdd55';
       for (let y = 0; y < LM.LH; y++) for (let xx = 0; xx < LM.LW; xx++) { const q = y * LM.LW + xx; if ((xx < LM.LW - 1 && LM.lab[q] !== LM.lab[q + 1]) || (y < LM.LH - 1 && LM.lab[q] !== LM.lab[q + LM.LW])) x.fillRect(xx * cw, y * ch, Math.max(1.5, cw), Math.max(1.5, ch)); }
     }
+    drawTitle(x, W, H, AS.text);
   },
   tap(px, py) {
     if (!AS || !AS.LM) return;
@@ -2207,7 +2250,7 @@ function autoExport() {
   exportFlow({
     sizes, sizeKey: () => S.auto.size, setSize: k => { S.auto.size = k; },
     dims: long => { const H = longToH(long); return { W: Math.round(H * ratio), H }; },
-    render: (long, p) => renderAutoAny(longToH(long), p, 0.02, 0.92).then(r => { if (S.sign && S.name) drawSignature(r.c.getContext('2d'), r.W, r.H); return r; }),
+    render: (long, p) => renderAutoAny(longToH(long), p, 0.02, 0.92).then(r => { drawTitle(r.c.getContext('2d'), r.W, r.H, AS.text); if (S.sign && S.name) drawSignature(r.c.getContext('2d'), r.W, r.H); return r; }),
     kind: 'autocollage', name: () => T('autoTitle'),
     thumb: () => thumbOf(AS.prev.c, AS.prev.W, AS.prev.H),
     onSaved: () => { AS.saved = true; }
@@ -2225,6 +2268,191 @@ function autoStyleSheet() {
     S.auto.style = b.dataset.s; saveS(); m.close();
     $('aeSeams').classList.toggle('hidden', S.auto.style !== 'blend');
     await buildAuto(false);
+  });
+}
+
+/* ═══ CollageNest 1.3 — mosaic projects · text/title on collages · share-to-app (share target) ═══ */
+
+/* ── mosaic projects (IndexedDB "projects": main photo Blob + tile ids + assignment) ── */
+async function bitmapToBlob(b, q) { const c = mkCanvas(b.width, b.height); c.getContext('2d').drawImage(b, 0, 0); return await canvasToBlob(c, 'image/jpeg', q || 0.92); }
+async function saveProject() {
+  const m = MS; if (!m) return;
+  const name = m.projectId ? m.name : await promptBox(T('projectName'), m.name || T('mosaic'), T('save'));
+  if (name == null) return;
+  const p = Prog.show(T('savingProject'), false);
+  try {
+    if (!m.mainBlob) m.mainBlob = await bitmapToBlob(m.main);
+    const old = m.projectId ? await DB.get('projects', m.projectId) : null;
+    const rec = {
+      id: m.projectId || uid(), name: name || T('mosaic'), created: old ? old.created : Date.now(), updated: Date.now(),
+      libId: m.libId, cols: m.cols, aspect: m.aspect, flip: m.tileOf.length > m.N, variety: m.variety,
+      tileIds: m.tiles.map(t => t.id), assign: Array.from(m.assign), style: Object.assign({}, S.mosaic),
+      main: m.mainBlob, thumb: await thumbOf(m.comp, m.comp.width, m.comp.height), cells: m.assign.length
+    };
+    await DB.put('projects', rec);
+    m.projectId = rec.id; m.name = rec.name; m.saved = true; p.close(); toast(T('projectSaved'));
+  } catch (e) { p.close(); logErr('saveProject: ' + (e && e.message)); toast(T('storageFull'), true); }
+}
+async function openProject(id) {
+  const rec = await DB.get('projects', id); if (!rec) return;
+  const lib = await DB.get('libs', rec.libId);
+  if (!lib) { toast(T('projectLibGone'), true); return; }
+  const p = Prog.show(T('openingProject'), true);
+  try {
+    const main = await createImageBitmap(rec.main);
+    if (Setup.main && (!MS || MS.main !== Setup.main)) try { Setup.main.close(); } catch (e) {}
+    Setup.main = main; Setup.mainName = rec.name;
+    Object.assign(S.mosaic, rec.style || {}, { lib: rec.libId, cols: rec.cols, aspect: rec.aspect, flip: rec.flip, variety: rec.variety }); saveS();
+    const cache = await LibCache.load(rec.libId, p);
+    if (!cache.tiles.length) throw new Error('empty');
+    const a = ASPECTS[rec.aspect] || 1;
+    p.set(0.3, T('analyzing'));
+    const tf = await tileFeatures(cache.minis, a, rec.flip);
+    const g = gridFor(main.width, main.height, rec.cols, rec.aspect);
+    const tg = targetFeatures(main, g);
+    const C = g.cols * g.rows, N = cache.tiles.length, idx = new Map(cache.tiles.map((t, i) => [t.id, i]));
+    const oldN = rec.tileIds.length, assign = new Int32Array(C).fill(-1);
+    let missing = 0;
+    if (rec.assign.length === C) for (let c = 0; c < C; c++) {
+      const e = rec.assign[c], flip = e >= oldN, ni = idx.get(rec.tileIds[flip ? e - oldN : e]);
+      if (ni == null) { missing++; continue; }
+      assign[c] = ni + (flip && rec.flip ? N : 0);
+    }
+    for (let c = 0; c < C; c++) if (assign[c] < 0) { // photo was removed from the library → best remaining match
+      let best = 0, bd = Infinity; const base = c * FD;
+      for (let e = 0; e < tf.M; e++) { let s = 0; const o = e * FD; for (let k = 0; k < FD; k++) { const t = tg.feats[base + k] - tf.feats[o + k]; s += t * t; } if (s < bd) { bd = s; best = e; } }
+      assign[c] = best;
+    }
+    MS = { main, mainBlob: rec.main, name: rec.name, libId: rec.libId, tiles: cache.tiles, minis: cache.minis, cols: g.cols, rows: g.rows, a, hex: g.hex, aspect: rec.aspect, src: g.src,
+      tf: tf.feats, tileOf: tf.tileOf, flipOf: tf.flipOf, N: tf.N, cf: tg.feats, rgb: tg.rgb, variety: rec.variety, assign, undo: [], redo: [], saved: true, projectId: rec.id };
+    p.set(0.95, T('drawing')); await yieldUI();
+    buildComposite(MS, S.mosaic);
+    p.close();
+    if (missing) toast(T('projectMissing', { n: nf(missing) }), true);
+    go('editor');
+  } catch (e) { p.close(); if (e && e.message === 'cancel') toast(T('cancelled')); else { logErr('openProject: ' + (e && e.message)); toast(T('mosaicFail'), true); } }
+}
+async function editProjectDialog(id, after) {
+  const it = await DB.get('projects', id); if (!it) return;
+  const m = openModal({
+    title: T('editProject'),
+    html: '<label class="f" for="epName">' + esc(T('name')) + '</label><input type="text" id="epName" maxlength="60" value="' + esc(it.name) + '">' +
+      '<p class="small muted">' + esc(df(it.updated)) + ' · ' + esc(T('nTiles', { n: nf(it.cells) })) + '</p><button class="btn danger sm" id="epDel" type="button">🗑 ' + esc(T('delete')) + '</button>',
+    actions: [{ label: T('cancel'), cls: 'ghost' }, { label: T('save'), cls: 'primary', onClick: async () => { it.name = $('epName').value.trim() || it.name; await DB.put('projects', it); if (MS && MS.projectId === id) MS.name = it.name; after && after(); } }]
+  });
+  $('epDel').onclick = async () => {
+    if (!await confirmBox(T('deleteProjectQ'), T('delete'), true)) return;
+    await DB.del('projects', id); if (MS && MS.projectId === id) MS.projectId = null;
+    m.close(); toast(T('deleted')); after && after();
+  };
+}
+async function projectsCardHTML() {
+  const ps = (await DB.all('projects')).sort((a, b) => b.updated - a.updated);
+  if (!ps.length) return '';
+  return '<div class="card"><h3>📁 ' + esc(T('myProjects')) + '</h3><div class="gal">' + ps.map(it => '<div class="lib" role="button" tabindex="0" data-prj="' + it.id + '"><div class="cov"><img alt="" src="' + trackURL(URL.createObjectURL(it.thumb)) + '"></div><div class="meta"><b>' + esc(it.name) + '</b><small>' + esc(df(it.updated)) + '</small></div><button class="ed" type="button" data-pe="' + it.id + '" aria-label="' + esc(T('edit')) + '">✏️</button></div>').join('') + '</div></div>';
+}
+function bindProjects(after) {
+  document.querySelectorAll('[data-prj]').forEach(el => {
+    el.onclick = e => { if (e.target.closest('[data-pe]')) return; openProject(el.dataset.prj); };
+    el.onkeydown = e => { if (e.key === 'Enter') openProject(el.dataset.prj); };
+    onLongPress(el, () => editProjectDialog(el.dataset.prj, after));
+  });
+  document.querySelectorAll('[data-pe]').forEach(b => b.onclick = e => { e.stopPropagation(); editProjectDialog(b.dataset.pe, after); });
+}
+
+/* ── text / title overlay (collage + AutoCollage) ── */
+const newText = () => ({ text: '', size: 9, color: '#ffffff', pos: 'bottom', style: 'shadow', font: 'sans' });
+const FONTS = {
+  sans: '800 {s}px ' + 'system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Hebrew","Noto Sans Arabic",Arial,sans-serif',
+  serif: '700 {s}px Georgia,"Times New Roman","Noto Serif Hebrew","David",serif',
+  script: 'italic 700 {s}px "Segoe Script","Brush Script MT","Comic Sans MS","Guttman Yad-Brush",cursive'
+};
+function drawTitle(x, W, H, t) {
+  if (!t || !t.text || !t.text.trim()) return;
+  const m = Math.min(W, H), fs = Math.max(10, t.size / 100 * m), lines = t.text.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 4);
+  const lh = fs * 1.22, block = lines.length * lh, pad = fs * 0.45, margin = m * 0.04;
+  const cy = t.pos === 'top' ? margin + pad + block / 2 : t.pos === 'center' ? H / 2 : H - margin - pad - block / 2;
+  x.save();
+  x.font = FONTS[t.font || 'sans'].replace('{s}', Math.round(fs));
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  try { x.direction = /[֐-׿؀-ۿ]/.test(t.text) ? 'rtl' : 'ltr'; } catch (e) {}
+  if (t.style === 'band') {
+    const light = /^#?(f|e|d)/i.test(t.color.replace('#', ''));
+    x.fillStyle = light ? 'rgba(0,0,0,.45)' : 'rgba(255,255,255,.6)';
+    x.fillRect(0, cy - block / 2 - pad, W, block + pad * 2);
+  } else if (t.style === 'shadow') { x.shadowColor = 'rgba(0,0,0,.65)'; x.shadowBlur = fs * 0.18; x.shadowOffsetY = fs * 0.05; }
+  x.fillStyle = t.color;
+  lines.forEach((ln, k) => x.fillText(ln, W / 2, cy - block / 2 + lh * (k + 0.5), W * 0.94));
+  x.restore();
+}
+function textSheet(t, onChange) {
+  const draw = () =>
+    '<label class="f" for="txIn">' + esc(T('titleText')) + '</label><textarea id="txIn" rows="2" maxlength="120" placeholder="' + esc(T('titlePh')) + '">' + esc(t.text) + '</textarea>' +
+    '<label class="f" for="txSize">' + esc(T('size')) + ': <span class="val" id="txSizeV">' + t.size + '</span></label><input type="range" id="txSize" min="3" max="20" step="0.5" value="' + t.size + '">' +
+    '<label class="f">' + esc(T('textColor')) + '</label><div class="swatches" id="txCol">' + ['#ffffff', '#000000', '#d4af37', '#ff6b81', '#6ea8ff', '#3fcf8e'].map(c => '<button type="button" data-c="' + c + '" class="' + (t.color === c ? 'on' : '') + '" style="background:' + c + '" aria-label="' + c + '"></button>').join('') + '<input type="color" id="txColI" value="' + t.color + '" aria-label="' + esc(T('customColor')) + '"></div>' +
+    '<label class="f">' + esc(T('position')) + '</label><div class="seg" id="txPos">' + ['top', 'center', 'bottom'].map(v => '<button type="button" data-v="' + v + '" class="' + (t.pos === v ? 'on' : '') + '">' + esc(T('pos_' + v)) + '</button>').join('') + '</div>' +
+    '<label class="f">' + esc(T('textStyle')) + '</label><div class="seg" id="txSt">' + ['shadow', 'band', 'plain'].map(v => '<button type="button" data-v="' + v + '" class="' + (t.style === v ? 'on' : '') + '">' + esc(T('ts_' + v)) + '</button>').join('') + '</div>' +
+    '<label class="f">' + esc(T('font')) + '</label><div class="seg" id="txFont">' + ['sans', 'serif', 'script'].map(v => '<button type="button" data-v="' + v + '" class="' + (t.font === v ? 'on' : '') + '">' + esc(T('fn_' + v)) + '</button>').join('') + '</div>';
+  const m = openModal({ title: T('addText'), html: draw(), actions: [{ label: T('removeText'), cls: 'ghost', onClick: () => { t.text = ''; onChange(); } }, { label: T('done'), cls: 'primary' }] });
+  m.el.style.background = 'rgba(0,0,0,.2)'; m.el.querySelector('.sheet').style.maxHeight = '56vh'; // keep the picture visible above
+  let tm = 0; const ch = () => { clearTimeout(tm); tm = setTimeout(onChange, 60); };
+  $('txIn').oninput = e => { t.text = e.target.value; ch(); };
+  $('txSize').oninput = e => { t.size = +e.target.value; $('txSizeV').textContent = t.size; ch(); };
+  m.body.querySelectorAll('#txCol [data-c]').forEach(b => b.onclick = () => { t.color = b.dataset.c; $('txColI').value = t.color; m.body.querySelectorAll('#txCol [data-c]').forEach(z => z.classList.toggle('on', z === b)); ch(); });
+  $('txColI').oninput = e => { t.color = e.target.value; ch(); };
+  [['txPos', 'pos'], ['txSt', 'style'], ['txFont', 'font']].forEach(([id, k]) => m.body.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => { t[k] = b.dataset.v; m.body.querySelectorAll('#' + id + ' button').forEach(z => z.classList.toggle('on', z === b)); ch(); }));
+  setTimeout(() => { try { $('txIn').focus(); } catch (e) {} }, 60);
+}
+
+/* ── share target: photos shared from the gallery arrive here (via sw.js) ── */
+async function takeSharedFiles() {
+  if (!('caches' in self)) return [];
+  try {
+    const c = await caches.open('collagenest-share'), keys = await c.keys(), files = [];
+    for (const k of keys) {
+      const r = await c.match(k); if (!r) continue;
+      const b = await r.blob(), name = decodeURIComponent(r.headers.get('X-Name') || 'photo.jpg');
+      files.push(new File([b], name, { type: b.type || 'image/jpeg', lastModified: Date.now() }));
+      await c.delete(k);
+    }
+    return files;
+  } catch (e) { logErr('share: ' + (e && e.message)); return []; }
+}
+async function handleShared() {
+  const qs = new URLSearchParams(location.search); if (!qs.has('shared')) return;
+  qs.delete('shared'); history.replaceState(history.state, '', location.pathname + (qs.toString() ? '?' + qs : '') + location.hash);
+  const files = (await takeSharedFiles()).filter(isImageFile);
+  if (!files.length) { toast(T('sharedNone'), true); return; }
+  const one = files.length === 1;
+  const m = openModal({
+    title: T('sharedTitle', { n: nf(files.length) }),
+    html: '<div class="seg" style="flex-direction:column">' +
+      (one ? '<button type="button" data-a="main" style="justify-content:flex-start;min-height:54px">🎯 ' + esc(T('shareAsMain')) + '</button>' : '') +
+      '<button type="button" data-a="lib" style="justify-content:flex-start;min-height:54px">📚 ' + esc(T('shareToLib')) + '</button>' +
+      '<button type="button" data-a="auto" style="justify-content:flex-start;min-height:54px">✨ ' + esc(T('shareToAuto')) + '</button>' +
+      '<button type="button" data-a="collage" style="justify-content:flex-start;min-height:54px">🖼️ ' + esc(T('shareToCollage')) + '</button></div>',
+    actions: [{ label: T('cancel'), cls: 'ghost' }]
+  });
+  m.body.querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
+    m.close(); const a = b.dataset.a;
+    if (a === 'main') { const p = Prog.show(T('loadingPhoto'), false); try { await setMain(await decodeImage(files[0]), files[0].name.replace(/\.[^.]+$/, '')); } catch (e) { p.close(); toast(T('decodeFail'), true); return; } p.close(); go('mosaic'); }
+    else if (a === 'auto') { await analyseFiles(files); go('auto'); }
+    else if (a === 'collage') { await newCollage(files); }
+    else pickLibraryFor(files);
+  });
+}
+async function pickLibraryFor(files) {
+  const libs = (await DB.all('libs')).sort((a, b) => b.updated - a.updated);
+  const m = openModal({
+    title: T('chooseLib'),
+    html: '<div class="seg" style="flex-direction:column">' + libs.map(l => '<button type="button" data-l="' + l.id + '" style="justify-content:flex-start">📚 ' + esc(l.name) + ' · ' + esc(T('nPhotos', { n: nf(l.count) })) + '</button>').join('') +
+      '<button type="button" data-l="" style="justify-content:flex-start">➕ ' + esc(T('newLib')) + '</button></div>',
+    actions: [{ label: T('cancel'), cls: 'ghost' }]
+  });
+  m.body.querySelectorAll('[data-l]').forEach(b => b.onclick = async () => {
+    m.close(); let id = b.dataset.l;
+    if (!id) { const name = await promptBox(T('newLib'), T('libDefaultName', { d: df(Date.now()) }), T('create')); if (name == null) return; id = (await newLibrary(name)).id; }
+    await importToLib(id, files); go('lib', id);
   });
 }
 
@@ -2732,6 +2960,13 @@ Object.assign(LANG.ru, {"drawingN": "Размещаю фото {n} из {t}", "s
 Object.assign(LANG.es, {"drawingN": "Colocando foto {n} de {t}", "st_blend": "Fusión continua", "st_blend_d": "El AutoCollage clásico: las fotos se funden en una sola imagen", "st_album": "Álbum de fotos", "st_album_d": "Fotos impresas con marco, algo inclinadas, con sombra suave", "st_grid": "Cuadrícula limpia", "st_grid_d": "Disposición ordenada con espacios finos y las caras dentro del marco"});
 Object.assign(LANG.ar, {"drawingN": "وضع الصورة {n} من {t}", "st_blend": "دمج متصل", "st_blend_d": "AutoCollage الكلاسيكي — تذوب الصور في صورة واحدة", "st_album": "ألبوم صور", "st_album_d": "صور مطبوعة بإطار، مائلة قليلًا، مع ظل ناعم", "st_grid": "شبكة نظيفة", "st_grid_d": "ترتيب مرتب بفواصل رفيعة مع إبقاء الوجوه داخل الإطار"});
 
+/* v1.3 strings: hex tiles, projects, text, share target */
+Object.assign(LANG.en, {"asp_hex": "Hexagons", "saveProject": "Project", "projectName": "Project name", "savingProject": "Saving project…", "projectSaved": "Project saved — find it under \"My projects\"", "projectLibGone": "The tile library of this project was deleted", "openingProject": "Opening project…", "projectMissing": "{n} tiles used photos that were removed — replaced with the best remaining match", "editProject": "Edit project", "nTiles": "{n} tiles", "deleteProjectQ": "Delete this project? (Saved creations are not affected.)", "myProjects": "My projects", "titleText": "Text", "titlePh": "e.g. Eilat 2026", "textColor": "Text colour", "position": "Position", "pos_top": "Top", "pos_center": "Middle", "pos_bottom": "Bottom", "textStyle": "Look", "ts_shadow": "Shadow", "ts_band": "Band", "ts_plain": "Plain", "font": "Font", "fn_sans": "Bold", "fn_serif": "Classic", "fn_script": "Handwritten", "addText": "Add text", "removeText": "Remove text", "text": "Text", "sharedNone": "No photos arrived from the share", "sharedTitle": "{n} photos received — what now?", "shareAsMain": "Use as the main photo of a mosaic", "shareToLib": "Add to a tile library", "shareToAuto": "Make an AutoCollage", "shareToCollage": "Make a collage", "chooseLib": "Choose a library", "backupNote": "Settings backup = small file. Full backup also includes all libraries (can be large). Saved creations and mosaic projects are not included — download creations from the gallery.", "tip7": "Share photos from your phone's gallery straight to CollageNest (after installing the app)."});
+Object.assign(LANG.he, {"asp_hex": "משושים", "saveProject": "פרויקט", "projectName": "שם הפרויקט", "savingProject": "שומר פרויקט…", "projectSaved": "הפרויקט נשמר — הוא מחכה תחת \"הפרויקטים שלי\"", "projectLibGone": "ספריית האריחים של הפרויקט נמחקה", "openingProject": "פותח פרויקט…", "projectMissing": "{n} אריחים השתמשו בתמונות שהוסרו — הוחלפו בהתאמה הכי טובה שנשארה", "editProject": "עריכת פרויקט", "nTiles": "{n} אריחים", "deleteProjectQ": "למחוק את הפרויקט? (היצירות השמורות לא נפגעות.)", "myProjects": "הפרויקטים שלי", "titleText": "טקסט", "titlePh": "למשל: אילת 2026", "textColor": "צבע הטקסט", "position": "מיקום", "pos_top": "למעלה", "pos_center": "באמצע", "pos_bottom": "למטה", "textStyle": "מראה", "ts_shadow": "צל", "ts_band": "פס רקע", "ts_plain": "רגיל", "font": "גופן", "fn_sans": "מודגש", "fn_serif": "קלאסי", "fn_script": "כתב יד", "addText": "הוספת טקסט", "removeText": "הסר טקסט", "text": "טקסט", "sharedNone": "לא הגיעו תמונות מהשיתוף", "sharedTitle": "התקבלו {n} תמונות — מה עושים?", "shareAsMain": "תמונה ראשית לפסיפס", "shareToLib": "הוסף לספריית אריחים", "shareToAuto": "צור AutoCollage", "shareToCollage": "צור קולאז׳", "chooseLib": "בחר ספרייה", "backupNote": "גיבוי הגדרות = קובץ קטן. גיבוי מלא כולל גם את כל הספריות (יכול להיות גדול). היצירות השמורות ופרויקטי הפסיפס לא נכללים — הורד את היצירות מהגלריה.", "tip7": "אפשר לשתף תמונות מהגלריה של הטלפון ישר ל-CollageNest (אחרי התקנת האפליקציה)."});
+Object.assign(LANG.ru, {"asp_hex": "Шестиугольники", "saveProject": "Проект", "projectName": "Название проекта", "savingProject": "Сохраняю проект…", "projectSaved": "Проект сохранён — он в разделе «Мои проекты»", "projectLibGone": "Библиотека плиток этого проекта удалена", "openingProject": "Открываю проект…", "projectMissing": "{n} плиток использовали удалённые фото — заменены лучшими из оставшихся", "editProject": "Изменить проект", "nTiles": "плиток: {n}", "deleteProjectQ": "Удалить проект? (Сохранённые работы не затрагиваются.)", "myProjects": "Мои проекты", "titleText": "Текст", "titlePh": "например: Эйлат 2026", "textColor": "Цвет текста", "position": "Положение", "pos_top": "Сверху", "pos_center": "По центру", "pos_bottom": "Снизу", "textStyle": "Вид", "ts_shadow": "Тень", "ts_band": "Полоса", "ts_plain": "Простой", "font": "Шрифт", "fn_sans": "Жирный", "fn_serif": "Классический", "fn_script": "Рукописный", "addText": "Добавить текст", "removeText": "Убрать текст", "text": "Текст", "sharedNone": "Фото не пришли", "sharedTitle": "Получено фото: {n} — что дальше?", "shareAsMain": "Основное фото для мозаики", "shareToLib": "Добавить в библиотеку плиток", "shareToAuto": "Создать AutoCollage", "shareToCollage": "Создать коллаж", "chooseLib": "Выберите библиотеку", "backupNote": "Копия настроек = маленький файл. Полная копия включает все библиотеки (может быть большой). Сохранённые работы и проекты мозаик не входят — скачайте работы из галереи.", "tip7": "Делитесь фото из галереи телефона прямо в CollageNest (после установки приложения)."});
+Object.assign(LANG.es, {"asp_hex": "Hexágonos", "saveProject": "Proyecto", "projectName": "Nombre del proyecto", "savingProject": "Guardando proyecto…", "projectSaved": "Proyecto guardado: está en «Mis proyectos»", "projectLibGone": "Se eliminó la biblioteca de este proyecto", "openingProject": "Abriendo proyecto…", "projectMissing": "{n} teselas usaban fotos eliminadas: se cambiaron por la mejor coincidencia restante", "editProject": "Editar proyecto", "nTiles": "{n} teselas", "deleteProjectQ": "¿Eliminar este proyecto? (Las creaciones guardadas no se tocan.)", "myProjects": "Mis proyectos", "titleText": "Texto", "titlePh": "p. ej.: Eilat 2026", "textColor": "Color del texto", "position": "Posición", "pos_top": "Arriba", "pos_center": "Centro", "pos_bottom": "Abajo", "textStyle": "Aspecto", "ts_shadow": "Sombra", "ts_band": "Banda", "ts_plain": "Simple", "font": "Fuente", "fn_sans": "Negrita", "fn_serif": "Clásica", "fn_script": "Manuscrita", "addText": "Añadir texto", "removeText": "Quitar texto", "text": "Texto", "sharedNone": "No llegaron fotos", "sharedTitle": "Se recibieron {n} fotos: ¿qué hacemos?", "shareAsMain": "Foto principal de un mosaico", "shareToLib": "Añadir a una biblioteca", "shareToAuto": "Crear AutoCollage", "shareToCollage": "Crear collage", "chooseLib": "Elige una biblioteca", "backupNote": "Copia de ajustes = archivo pequeño. La copia completa incluye todas las bibliotecas (puede ser grande). Las creaciones guardadas y los proyectos de mosaico no se incluyen: descarga las creaciones desde la galería.", "tip7": "Comparte fotos desde la galería del móvil directamente a CollageNest (tras instalar la app)."});
+Object.assign(LANG.ar, {"asp_hex": "سداسيات", "saveProject": "مشروع", "projectName": "اسم المشروع", "savingProject": "جارٍ حفظ المشروع…", "projectSaved": "تم حفظ المشروع — تجده في «مشاريعي»", "projectLibGone": "تم حذف مكتبة البلاطات الخاصة بهذا المشروع", "openingProject": "جارٍ فتح المشروع…", "projectMissing": "{n} بلاطة استخدمت صورًا محذوفة — استُبدلت بأفضل تطابق متبقٍ", "editProject": "تعديل المشروع", "nTiles": "{n} بلاطة", "deleteProjectQ": "حذف هذا المشروع؟ (الأعمال المحفوظة لا تتأثر.)", "myProjects": "مشاريعي", "titleText": "النص", "titlePh": "مثال: إيلات 2026", "textColor": "لون النص", "position": "الموضع", "pos_top": "أعلى", "pos_center": "وسط", "pos_bottom": "أسفل", "textStyle": "المظهر", "ts_shadow": "ظل", "ts_band": "شريط", "ts_plain": "عادي", "font": "الخط", "fn_sans": "عريض", "fn_serif": "كلاسيكي", "fn_script": "بخط اليد", "addText": "إضافة نص", "removeText": "إزالة النص", "text": "نص", "sharedNone": "لم تصل صور من المشاركة", "sharedTitle": "وصلت {n} صور — ماذا نفعل؟", "shareAsMain": "صورة رئيسية لفسيفساء", "shareToLib": "إضافة إلى مكتبة بلاطات", "shareToAuto": "إنشاء AutoCollage", "shareToCollage": "إنشاء كولاج", "chooseLib": "اختر مكتبة", "backupNote": "نسخة الإعدادات = ملف صغير. النسخة الكاملة تشمل كل المكتبات (قد تكون كبيرة). الأعمال المحفوظة ومشاريع الفسيفساء غير مشمولة — نزّل الأعمال من المعرض.", "tip7": "شارك الصور من معرض الهاتف مباشرة إلى CollageNest (بعد تثبيت التطبيق)."});
+
 /* ═══ CollageNest — screens: home, libraries, gallery, settings, about, guide, diagnostics, router, init ═══ */
 
 /* ── router (Android back button friendly) ── */
@@ -3011,7 +3246,7 @@ async function restore() {
 async function wipeAll() {
   if (!await confirmBox(T('deleteAllQ1'), T('continue'), true)) return;
   if (!await confirmBox(T('deleteAllQ2'), T('deleteAll'), true)) return;
-  await DB.clear('tiles'); await DB.clear('libs'); await DB.clear('gallery');
+  await DB.clear('tiles'); await DB.clear('libs'); await DB.clear('gallery'); await DB.clear('projects');
   Store.clearAll(); LibCache.drop(); MS = null; CS = null;
   S = JSON.parse(JSON.stringify(DEF_S)); S.lang = detectLang();
   applyLang(); toast(T('allDeleted')); go('home', null, true); setTimeout(onboarding, 400);
@@ -3033,7 +3268,7 @@ function onboarding() {
 }
 function renderGuide() {
   $('main').innerHTML = '<div class="screen">' + GUIDE.map(g => '<div class="card"><h3>' + g[0] + ' ' + esc(T(g[1])) + '</h3><p class="muted" style="margin:0">' + esc(T(g[2])) + '</p></div>').join('') +
-    '<div class="card"><h3>💡 ' + esc(T('tipsTitle')) + '</h3><ul class="muted" style="margin:0;padding-inline-start:20px">' + ['tip1', 'tip2', 'tip3', 'tip4', 'tip5', 'tip6'].map(k => '<li style="margin-bottom:6px">' + esc(T(k)) + '</li>').join('') + '</ul></div>' +
+    '<div class="card"><h3>💡 ' + esc(T('tipsTitle')) + '</h3><ul class="muted" style="margin:0;padding-inline-start:20px">' + ['tip1', 'tip2', 'tip3', 'tip4', 'tip5', 'tip6', 'tip7'].map(k => '<li style="margin-bottom:6px">' + esc(T(k)) + '</li>').join('') + '</ul></div>' +
     '<button class="btn primary big" id="gStart" type="button">👋 ' + esc(T('replayIntro')) + '</button></div>';
   $('gStart').onclick = onboarding;
 }
@@ -3078,6 +3313,7 @@ async function diagReport() {
     'Share files: ' + !!(navigator.canShare) + ' · crossOriginIsolated: ' + !!self.crossOriginIsolated,
     'Libraries: ' + libs.length + ' · tiles: ' + libs.reduce((s, l) => s + (l.count || 0), 0) + ' · gallery: ' + gal.length,
     'Face detection: ' + AS_faceState + (window.faceapi && window.faceapi.tf ? ' (' + window.faceapi.tf.getBackend() + ')' : '') + ' · AutoCollage: ' + (AS ? AS.ps.length + ' photos' : 'none'),
+    'Projects: ' + (await DB.all('projects')).length + ' · share target: ' + ('serviceWorker' in navigator),
     'Mosaic session: ' + (MS ? MS.cols + 'x' + MS.rows + ' / ' + MS.N + ' tiles' : 'none'),
     '— Last errors (' + errs.length + ') —'
   ].concat(errs.map(e => e.t + ' ' + e.m + (e.s ? ' @' + e.s + ':' + e.l : '')));
@@ -3111,6 +3347,7 @@ function registerSW() {
   history.replaceState(st, '');
   await show(st);
   if (!S.onboarded) onboarding();
+  handleShared();
   registerSW();
   requestPersist();
   window.__CN_READY = true;

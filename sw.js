@@ -24,9 +24,10 @@
    - navigation: network-first (4s) → cache → friendly offline page, never an error
    - only the app root is cached as "./" (other pages under their own URL)
    - same-origin files: network (no-cache/ETag) with cache fallback
-   - CDN libraries (heic2any): cache-first in a separate vendor cache
+   - CDN libraries (heic2any, face-api): cache-first in a separate vendor cache
+   - share target: POST ./share-target → photos parked in cache 'collagenest-share' → redirect to ./?shared=N
    Bump VERSION on every update. */
-var VERSION = '1.2.0';
+var VERSION = '1.3.0';
 var APP_CACHE = 'collagenest-app-' + VERSION;
 var VENDOR_CACHE = 'collagenest-vendor-v1';
 var SHELL = ['./', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html'];
@@ -81,8 +82,22 @@ function navResponse(req) {
   });
 }
 
+function shareTarget(req) {
+  return req.formData().then(function (fd) {
+    var files = fd.getAll('photos').filter(function (f) { return f && typeof f === 'object' && f.size; });
+    return caches.open('collagenest-share').then(function (c) {
+      return c.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return c.delete(k); })); }).then(function () {
+        return Promise.all(files.map(function (f, i) {
+          return c.put('./__share/' + i, new Response(f, { headers: { 'Content-Type': f.type || 'image/jpeg', 'X-Name': encodeURIComponent(f.name || ('photo' + i + '.jpg')) } }));
+        }));
+      });
+    }).then(function () { return Response.redirect(new URL('./?shared=' + files.length, self.registration.scope).href, 303); });
+  }).catch(function () { return Response.redirect(new URL('./?shared=0', self.registration.scope).href, 303); });
+}
+
 self.addEventListener('fetch', function (e) {
   var req = e.request;
+  if (req.method === 'POST' && /\/share-target\/?$/.test(new URL(req.url).pathname)) { e.respondWith(shareTarget(req)); return; }
   if (req.method !== 'GET') return;
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) {
