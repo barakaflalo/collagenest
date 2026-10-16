@@ -26,7 +26,7 @@
    - same-origin files: network (no-cache/ETag) with cache fallback
    - CDN libraries (heic2any): cache-first in a separate vendor cache
    Bump VERSION on every update. */
-var VERSION = '1.1.0';
+var VERSION = '1.2.0';
 var APP_CACHE = 'collagenest-app-' + VERSION;
 var VENDOR_CACHE = 'collagenest-vendor-v1';
 var SHELL = ['./', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html'];

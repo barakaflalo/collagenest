@@ -222,7 +222,7 @@ pre.diag{white-space:pre-wrap;word-break:break-all;background:var(--bg3);border:
 <script>
 /* ═══ CollageNest · AppNest — core (storage, i18n helpers, UI shell) ═══ */
 'use strict';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const STORE_URL = 'https://appnest-store.pages.dev';
 const FEEDBACK_MAIL = 'appnest55@gmail.com';
 
@@ -334,7 +334,7 @@ const DEF_S = {
   lang: detectLang(), theme: 'gold', mode: 'night', name: '', fmt: 'jpg', onboarded: false,
   mosaic: { cols: 50, aspect: '1:1', variety: 'med', flip: true, tint: 20, overlay: 0, grout: 0, groutColor: '#000000', shape: 'square', size: '4k' },
   collage: { ratio: '1:1', gap: 2, radius: 2, bg: '#ffffff', size: 3072 },
-  auto: { count: 0, ratio: '4:3', faces: true, size: '2k' }
+  auto: { count: 0, ratio: '4:3', faces: true, size: '2k', style: 'blend' }
 };
 let S = Object.assign({}, DEF_S, Store.get('settings', {}));
 S.mosaic = Object.assign({}, DEF_S.mosaic, S.mosaic || {});
@@ -1765,7 +1765,12 @@ async function analysePhoto(file, fa) {
   [rx0, rx1] = grow(rx0, rx1, 0.45); [ry0, ry1] = grow(ry0, ry1, 0.45);
   bmp.close();
   const expo = 1 - Math.min(1, Math.abs(lum - 125) / 125) * 0.8 - (contrast < 25 ? 0.3 : 0);
-  return { file, name: file.name || '', w: W, h: H, a: A, thumb: tb.blob, hist, sharp, expo, sat, contrast, sal, sw: SW, sh: SH, faces, roi: { x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0 }, boost: 0, mode: 'auto' };
+  const LGW = 48, LGH = Math.max(4, sh >> 1), lg = new Float32Array(LGW * LGH * 3);
+  for (let y = 0; y < LGH; y++) for (let xx = 0; xx < LGW; xx++) for (let c = 0; c < 3; c++) {
+    let v = 0, m = 0; for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) { const yy = Math.min(sh - 1, y * 2 + dy), x2 = Math.min(sw - 1, xx * 2 + dx); v += lab[(yy * sw + x2) * 3 + c]; m++; }
+    lg[(y * LGW + xx) * 3 + c] = v / m;
+  }
+  return { file, name: file.name || '', w: W, h: H, a: A, thumb: tb.blob, hist, sharp, expo, sat, contrast, sal, sw: SW, sh: SH, lg, lgw: LGW, lgh: LGH, faces, roi: { x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0 }, boost: 0, mode: 'auto' };
 }
 const histDist = (a, b) => { let s = 0; for (let i = 0; i < 64; i++) s += Math.abs(a[i] - b[i]); return s / 2; };
 
@@ -1834,43 +1839,60 @@ function makeLayout(ps, chosen, ratio, seed) {
   return { VW, VH, place };
 }
 
-/* label map: which photo shows at each spot (saliency + own region + faces), then Potts smoothing */
+/* label map: which photo shows at each spot.
+   Unary = saliency + own region + protected faces; pairwise = seam cost that is low where the two
+   photos look alike there (graph-cut style energy, minimised with ICM) → seams hide in similar areas. */
 function labelMap(ps, L) {
-  const LW = L.VW >= L.VH ? 200 : Math.round(200 * L.VW / L.VH), LH = Math.round(LW * L.VH / L.VW), c = L.VW / LW;
-  const K = L.place.length, sc = new Float32Array(LW * LH * K).fill(-1e9), lab = new Int8Array(LW * LH), face = new Int8Array(LW * LH).fill(-1);
+  const LW = L.VW >= L.VH ? 200 : Math.round(200 * L.VW / L.VH), LH = Math.round(LW * L.VH / L.VW), c = L.VW / LW, N = LW * LH;
+  const K = L.place.length, sc = new Float32Array(N * K).fill(-1e9), col = new Float32Array(N * K * 3), lab = new Int8Array(N), face = new Int8Array(N).fill(-1);
   const diag = Math.hypot(L.VW, L.VH);
   L.place.forEach((pl, k) => {
     const p = ps[pl.i], r = pl.rect;
     for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
       const px = (x + 0.5) * c, py = (y + 0.5) * c, u = (px - pl.ox) / pl.dw, v = (py - pl.oy) / pl.dh;
       if (u < 0.004 || v < 0.004 || u > 0.996 || v > 0.996) continue;
+      const q = y * LW + x;
       const sx = Math.min(p.sw - 1, Math.floor(u * p.sw)), sy = Math.min(p.sh - 1, Math.floor(v * p.sh)), sal = p.sal[sy * p.sw + sx];
+      const gx = Math.min(p.lgw - 1, Math.floor(u * p.lgw)), gy = Math.min(p.lgh - 1, Math.floor(v * p.lgh)), gi = (gy * p.lgw + gx) * 3;
+      col[(q * K + k) * 3] = p.lg[gi]; col[(q * K + k) * 3 + 1] = p.lg[gi + 1]; col[(q * K + k) * 3 + 2] = p.lg[gi + 2];
       const dx = Math.max(r.x - px, 0, px - (r.x + r.w)), dy = Math.max(r.y - py, 0, py - (r.y + r.h)), dd = Math.hypot(dx, dy) / diag;
-      const prior = dd === 0 ? 1 : Math.max(-1, 1 - dd * 9);
-      const edge = Math.min(u, v, 1 - u, 1 - v) < 0.05 ? -0.9 : 0;
-      sc[(y * LW + x) * K + k] = sal * 0.9 + prior * 1.4 + edge + p.boost * 0.5;
+      const prior = dd === 0 ? 1 : Math.max(-1.5, 1 - dd * 10);
+      const edge = Math.min(u, v, 1 - u, 1 - v) < 0.05 ? -1 : 0;
+      const dark = p.lg[gi] < 6 ? -0.6 : 0; // black borders / vignettes lose
+      sc[q * K + k] = sal * 1.1 + prior * 1.3 + edge + dark + p.boost * 0.5;
     }
-    for (const f of p.faces) { // protected face boxes
-      const fx0 = pl.ox + (f.x - f.w * 0.15) * pl.dw, fx1 = pl.ox + (f.x + f.w * 1.15) * pl.dw, fy0 = pl.oy + (f.y - f.h * 0.25) * pl.dh, fy1 = pl.oy + (f.y + f.h * 1.15) * pl.dh;
+    for (const f of p.faces) {
+      const fx0 = pl.ox + (f.x - f.w * 0.2) * pl.dw, fx1 = pl.ox + (f.x + f.w * 1.2) * pl.dw, fy0 = pl.oy + (f.y - f.h * 0.35) * pl.dh, fy1 = pl.oy + (f.y + f.h * 1.2) * pl.dh;
       for (let y = Math.max(0, Math.floor(fy0 / c)); y < Math.min(LH, Math.ceil(fy1 / c)); y++) for (let x = Math.max(0, Math.floor(fx0 / c)); x < Math.min(LW, Math.ceil(fx1 / c)); x++) {
         const q = y * LW + x; if (sc[q * K + k] > -1e8) { sc[q * K + k] += 3; if (face[q] < 0) face[q] = k; }
       }
     }
   });
-  for (let q = 0; q < LW * LH; q++) { let b = 0, bv = -1e10; for (let k = 0; k < K; k++) if (sc[q * K + k] > bv) { bv = sc[q * K + k]; b = k; } lab[q] = b; }
-  const beta = 0.32, cntv = new Float32Array(K);
-  for (let it = 0; it < 8; it++) {
+  for (let q = 0; q < N; q++) { let b = 0, bv = -1e10; for (let k = 0; k < K; k++) if (sc[q * K + k] > bv) { bv = sc[q * K + k]; b = k; } lab[q] = b; }
+  const lam = 0.42, kap = 0.07;
+  const seam = (q, n, a, b) => { // cost of a seam between cell q (label a) and neighbour n (label b)
+    const ia = (q * K + a) * 3, ib = (q * K + b) * 3, na = (n * K + a) * 3, nb = (n * K + b) * 3;
+    let d = 0;
+    if (sc[q * K + b] > -1e8) d += Math.abs(col[ia] - col[ib]) + Math.abs(col[ia + 1] - col[ib + 1]) + Math.abs(col[ia + 2] - col[ib + 2]); else d += 60;
+    if (sc[n * K + a] > -1e8) d += Math.abs(col[na] - col[nb]) + Math.abs(col[na + 1] - col[nb + 1]) + Math.abs(col[na + 2] - col[nb + 2]); else d += 60;
+    return lam * (1 + kap * d);
+  };
+  const nb4 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+  for (let it = 0; it < 10; it++) {
     for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) {
       const q = y * LW + x; if (face[q] >= 0) { lab[q] = face[q]; continue; }
-      cntv.fill(0);
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const yy = y + dy, xx = x + dx; if (yy >= 0 && xx >= 0 && yy < LH && xx < LW) cntv[lab[yy * LW + xx]]++; }
-      let b = lab[q], bv = -1e10;
-      for (let k = 0; k < K; k++) { const s = sc[q * K + k]; if (s < -1e8) continue; const v = s + beta * cntv[k]; if (v > bv) { bv = v; b = k; } }
-      lab[q] = b;
+      let best = lab[q], bE = 1e18;
+      for (let k = 0; k < K; k++) {
+        if (sc[q * K + k] < -1e8) continue;
+        let E = -sc[q * K + k];
+        for (let j = 0; j < 8; j++) { const xx = x + nb4[j][0], yy = y + nb4[j][1]; if (xx < 0 || yy < 0 || xx >= LW || yy >= LH) continue; const n = yy * LW + xx, l = lab[n]; if (l !== k) E += seam(q, n, k, l) * (j < 4 ? 1 : 0.7); }
+        if (E < bE) { bE = E; best = k; }
+      }
+      lab[q] = best;
     }
   }
-  const area = new Float32Array(K); for (let q = 0; q < lab.length; q++) area[lab[q]]++;
-  return { LW, LH, lab, area: [...area].map(a => a / lab.length) };
+  const area = new Float32Array(K); for (let q = 0; q < N; q++) area[lab[q]]++;
+  return { LW, LH, lab, area: [...area].map(a => a / N) };
 }
 
 /* ── multi-band (Laplacian pyramid) blending worker ── */
@@ -1930,7 +1952,7 @@ function blendWorker() {
 /* render a layout at a given output height → canvas */
 async function renderAuto(ps, L, LM, OH, p, p0, p1) {
   const f = OH / L.VH, OW = Math.round(L.VW * f);
-  const NL = Math.max(1, Math.min(7, Math.floor(Math.log2(Math.min(OW, OH) / 12))));
+  const NL = Math.max(1, Math.min(6, Math.floor(Math.log2(Math.min(OW, OH) / 40))));
   const wk = blendWorker();
   try {
     await wk.call({ t: 'init', W: OW, H: OH, L: NL });
@@ -1962,6 +1984,55 @@ async function renderAuto(ps, L, LM, OH, p, p0, p1) {
     big.width = big.height = mc.width = mc.height = 1;
     return { c: cv, W: OW, H: OH };
   } finally { wk.end(); }
+}
+
+
+/* ── tidy styles: "album" (framed prints, slight tilt, shadow) and "grid" (clean layout, thin gaps) ── */
+function cropAround(bw, bh, a, roi) {
+  const [, , cw, ch] = cropToAspect(bw, bh, a);
+  const cx = (roi.x + roi.w / 2) * bw, cy = (roi.y + roi.h / 2) * bh;
+  return [clamp(cx - cw / 2, 0, bw - cw), clamp(cy - ch / 2, 0, bh - ch), cw, ch];
+}
+function albumBoxes(L, f, seed) { // shared by render + tap hit-test
+  const R = seeded((seed ^ 0x9e3779b9) >>> 0);
+  return L.place.map((pl, k) => {
+    const r = pl.rect, sz = 0.84 + R() * 0.1;
+    return { k, cx: (r.x + r.w / 2 + (R() - 0.5) * r.w * 0.06) * f, cy: (r.y + r.h / 2 + (R() - 0.5) * r.h * 0.06) * f, w: r.w * f * sz, h: r.h * f * sz, rot: (R() - 0.5) * 0.17, area: r.w * r.h };
+  }).sort((a, b) => b.area - a.area); // big first → small ones on top, so every photo is seen
+}
+async function renderSimple(ps, L, OH, style, p) {
+  const f = OH / L.VH, OW = Math.round(L.VW * f), m = Math.min(OW, OH);
+  const c = document.createElement('canvas'); c.width = OW; c.height = OH; const x = c.getContext('2d');
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  if (style === 'grid') { x.fillStyle = S.auto.gridBg || '#ffffff'; x.fillRect(0, 0, OW, OH); }
+  else { const g = x.createRadialGradient(OW / 2, OH / 2, m * 0.1, OW / 2, OH / 2, Math.hypot(OW, OH) / 1.5); g.addColorStop(0, '#f7f1e4'); g.addColorStop(1, '#cdbd9f'); x.fillStyle = g; x.fillRect(0, 0, OW, OH); }
+  const boxes = style === 'album' ? albumBoxes(L, f, AS.seed) : L.place.map((pl, k) => ({ k }));
+  for (let n = 0; n < boxes.length; n++) {
+    if (p && p.cancelled) throw new Error('cancel');
+    const bx = boxes[n], pl = L.place[bx.k], ph = ps[pl.i];
+    let rx, ry, rw, rh;
+    if (style === 'grid') { const g = m * 0.007; rx = pl.rect.x * f + g; ry = pl.rect.y * f + g; rw = pl.rect.w * f - 2 * g; rh = pl.rect.h * f - 2 * g; }
+    else { rw = bx.w; rh = bx.h; }
+    const b = await decodeScaled(ph.file, clamp(Math.ceil(Math.max(rw, rh) * 1.25), 256, 4096));
+    const [sx, sy, sw, sh] = cropAround(b.width, b.height, rw / rh, ph.roi);
+    if (style === 'grid') {
+      x.save(); x.beginPath(); if (x.roundRect) x.roundRect(rx, ry, rw, rh, m * 0.006); else x.rect(rx, ry, rw, rh); x.clip();
+      x.drawImage(b, sx, sy, sw, sh, rx, ry, rw, rh); x.restore();
+    } else {
+      const bd = m * 0.016;
+      x.save(); x.translate(bx.cx, bx.cy); x.rotate(bx.rot);
+      x.shadowColor = 'rgba(0,0,0,.38)'; x.shadowBlur = m * 0.025; x.shadowOffsetY = m * 0.007;
+      x.fillStyle = '#fdfcf8'; x.fillRect(-rw / 2 - bd, -rh / 2 - bd, rw + bd * 2, rh + bd * 3.2);
+      x.shadowColor = 'transparent'; x.drawImage(b, sx, sy, sw, sh, -rw / 2, -rh / 2, rw, rh);
+      x.restore();
+    }
+    b.close();
+    if (p) p.set(0.1 + 0.85 * (n + 1) / boxes.length, T('drawingN', { n: nf(n + 1), t: nf(boxes.length) }));
+  }
+  return { c, W: OW, H: OH };
+}
+function renderAutoAny(OH, p, p0, p1) {
+  return S.auto.style === 'blend' ? renderAuto(AS.ps, AS.L, AS.LM, OH, p, p0, p1) : renderSimple(AS.ps, AS.L, OH, S.auto.style, p);
 }
 
 /* ── session + screens ── */
@@ -2013,6 +2084,7 @@ async function renderAutoSetup() {
     '<label class="f" for="aCount">' + esc(T('photosInCollage')) + ': <span class="val" id="aCountV">' + esc(st.count ? nf(st.count) : T('autoWord')) + '</span></label>' +
     '<input type="range" id="aCount" min="0" max="15" value="' + (st.count || 0) + '"><div class="small muted">' + esc(T('countHint')) + '</div>' +
     '<label class="f">' + esc(T('ratio')) + '</label><div class="seg" id="aRatio">' + Object.keys(AUTO_RATIOS).map(k => '<button type="button" data-v="' + k + '" class="' + (st.ratio === k ? 'on' : '') + '">' + k + '</button>').join('') + '</div>' +
+    '<label class="f">' + esc(T('style')) + '</label><div class="seg" id="aStyle">' + ['blend', 'album', 'grid'].map(k => '<button type="button" data-v="' + k + '" class="' + (st.style === k ? 'on' : '') + '">' + esc(T('st_' + k)) + '</button>').join('') + '</div>' +
     '<div class="sw" style="margin-top:8px"><span>' + esc(T('faceDetect')) + '<br><small class="muted">' + esc(AS_faceState === 'fail' ? T('facesUnavailable') : T('faceDetectHint')) + '</small></span><label class="toggle"><input type="checkbox" id="aFaces" ' + (st.faces ? 'checked' : '') + ' aria-label="' + esc(T('faceDetect')) + '"><span></span></label></div></div>' +
     '<button class="btn primary big" id="aMake" type="button"' + (AS ? '' : ' disabled') + '>✨ ' + esc(T('makeAuto')) + '</button></div>';
   $('main').innerHTML = html;
@@ -2027,6 +2099,7 @@ async function renderAutoSetup() {
   $('aCount').oninput = e => { st.count = +e.target.value; $('aCountV').textContent = st.count ? nf(st.count) : T('autoWord'); };
   $('aCount').onchange = () => { saveS(); if (AS) { reselect(); AS.prev = null; renderAutoSetup(); } };
   $('aRatio').querySelectorAll('button').forEach(b => b.onclick = () => { st.ratio = b.dataset.v; saveS(); if (AS) AS.prev = null; renderAutoSetup(); });
+  $('aStyle').querySelectorAll('button').forEach(b => b.onclick = () => { st.style = b.dataset.v; saveS(); if (AS) AS.prev = null; renderAutoSetup(); });
   $('aFaces').onchange = e => { st.faces = e.target.checked; saveS(); if (st.faces && AS) toast(T('facesNextAdd')); };
   $('aMake').onclick = () => buildAuto(false);
 }
@@ -2041,7 +2114,7 @@ async function buildAuto(reseed) {
     AS.L = makeLayout(AS.ps, AS.chosen, AUTO_RATIOS[AS.ratio] || 4 / 3, AS.seed);
     AS.LM = labelMap(AS.ps, AS.L);
     await yieldUI();
-    const r = await renderAuto(AS.ps, AS.L, AS.LM, AUTO_RATIOS[AS.ratio] >= 1 ? 900 : 1300, p, 0.08, 0.96);
+    const r = await renderAutoAny(AUTO_RATIOS[AS.ratio] >= 1 ? 900 : 1300, p, 0.08, 0.96);
     AS.prev = r; AS.saved = false; p.close();
     if (cur.s === 'autoEd') { AEd.paint(); toast(T('newLayout')); } else go('autoEd');
   } catch (e) {
@@ -2057,6 +2130,7 @@ const AEd = {
       '<div class="stage" id="astage" style="background:var(--bg)"><canvas id="aeCv" aria-label="' + esc(T('autoCanvas')) + '"></canvas><div class="hint" id="aeHint">' + esc(T('autoEdHint')) + '</div></div>' +
       '<div class="dock"><div class="acts">' +
       '<button class="btn" id="aeShuffle" type="button"><span class="i">🔀</span><span>' + esc(T('otherLayout')) + '</span></button>' +
+      '<button class="btn" id="aeStyle" type="button"><span class="i">🎨</span><span>' + esc(T('style')) + '</span></button>' +
       '<button class="btn" id="aeSeams" type="button" aria-pressed="false"><span class="i">👁</span><span>' + esc(T('showSeams')) + '</span></button>' +
       '<button class="btn ghost" id="aePhotos" type="button"><span class="i">🖼️</span><span>' + esc(T('photos')) + '</span></button>' +
       '<button class="btn primary" id="aeExport" type="button"><span class="i">⬇️</span><span>' + esc(T('exportSave')) + '</span></button></div></div>';
@@ -2067,6 +2141,8 @@ const AEd = {
     $('aePhotos').onclick = () => history.back();
     $('aeSeams').onclick = () => { this.seams = !this.seams; $('aeSeams').setAttribute('aria-pressed', this.seams); $('aeSeams').classList.toggle('primary', this.seams); this.paint(); };
     $('aeExport').onclick = autoExport;
+    $('aeStyle').onclick = autoStyleSheet;
+    $('aeSeams').classList.toggle('hidden', S.auto.style !== 'blend');
     this.cv.addEventListener('click', e => this.tap(e.offsetX, e.offsetY));
     if (this.ro) this.ro.disconnect();
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe($('astage'));
@@ -2087,19 +2163,30 @@ const AEd = {
     const x = this.x, W = this.cv.width, H = this.cv.height;
     if (this.cv.style.width && Math.abs(parseFloat(this.cv.style.width) / parseFloat(this.cv.style.height) - AS.prev.W / AS.prev.H) > 0.01) { this.resize(); return; }
     x.setTransform(1, 0, 0, 1, 0, 0); x.imageSmoothingQuality = 'high'; x.drawImage(AS.prev.c, 0, 0, W, H);
-    if (this.seams) {
+    if (this.seams && S.auto.style === 'blend') {
       const LM = AS.LM, cw = W / LM.LW, ch = H / LM.LH; x.fillStyle = '#ffdd55';
       for (let y = 0; y < LM.LH; y++) for (let xx = 0; xx < LM.LW; xx++) { const q = y * LM.LW + xx; if ((xx < LM.LW - 1 && LM.lab[q] !== LM.lab[q + 1]) || (y < LM.LH - 1 && LM.lab[q] !== LM.lab[q + LM.LW])) x.fillRect(xx * cw, y * ch, Math.max(1.5, cw), Math.max(1.5, ch)); }
     }
   },
   tap(px, py) {
     if (!AS || !AS.LM) return;
-    const LM = AS.LM, q = Math.min(LM.LH - 1, Math.floor(py / this.h * LM.LH)) * LM.LW + Math.min(LM.LW - 1, Math.floor(px / this.w * LM.LW));
-    const k = LM.lab[q], pi = AS.L.place[k].i, ph = AS.ps[pi];
+    const LM = AS.LM, L = AS.L; let k, share;
+    if (S.auto.style === 'blend') { const q = Math.min(LM.LH - 1, Math.floor(py / this.h * LM.LH)) * LM.LW + Math.min(LM.LW - 1, Math.floor(px / this.w * LM.LW)); k = LM.lab[q]; share = LM.area[k]; }
+    else {
+      const vx = px / this.w * L.VW, vy = py / this.h * L.VH;
+      if (S.auto.style === 'album') { // topmost tilted print under the finger
+        const bs = albumBoxes(L, 1, AS.seed); k = -1;
+        for (let n = bs.length - 1; n >= 0 && k < 0; n--) { const b = bs[n], dx = vx - b.cx, dy = vy - b.cy, c = Math.cos(-b.rot), s2 = Math.sin(-b.rot), ux = dx * c - dy * s2, uy = dx * s2 + dy * c; if (Math.abs(ux) <= b.w / 2 && Math.abs(uy) <= b.h / 2 + b.h * 0.05) k = b.k; }
+        if (k < 0) return;
+      } else k = L.place.findIndex(pl => vx >= pl.rect.x && vx <= pl.rect.x + pl.rect.w && vy >= pl.rect.y && vy <= pl.rect.y + pl.rect.h);
+      if (k < 0) return;
+      share = L.place[k].rect.w * L.place[k].rect.h / (L.VW * L.VH);
+    }
+    const pi = L.place[k].i, ph = AS.ps[pi];
     const others = AS.ps.map((p, i) => i).filter(i => !AS.chosen.includes(i) && AS.ps[i].mode !== 'out');
     const md = openModal({
       title: T('thisPhoto'),
-      html: '<div class="row"><img alt="" style="width:96px;height:96px;object-fit:cover;border-radius:12px" src="' + trackURL(URL.createObjectURL(ph.thumb)) + '"><div class="small muted">' + esc(T('photoShare', { p: Math.round(LM.area[k] * 100) })) + (ph.faces.length ? '<br>🙂 ' + esc(T('facesFound', { n: ph.faces.length })) : '') + '</div></div>' +
+      html: '<div class="row"><img alt="" style="width:96px;height:96px;object-fit:cover;border-radius:12px" src="' + trackURL(URL.createObjectURL(ph.thumb)) + '"><div class="small muted">' + esc(T('photoShare', { p: Math.round(share * 100) })) + (ph.faces.length ? '<br>🙂 ' + esc(T('facesFound', { n: ph.faces.length })) : '') + '</div></div>' +
         (others.length ? '<label class="f">' + esc(T('replaceWith')) + '</label><div class="thumbs" id="aRep">' + others.slice(0, 40).map(i => '<button type="button" data-i="' + i + '"><img alt="" src="' + trackURL(URL.createObjectURL(AS.ps[i].thumb)) + '"></button>').join('') + '</div>' : ''),
       actions: [
         { label: '⬆️ ' + T('bigger'), cls: 'primary', onClick: () => { ph.boost = Math.min(2, ph.boost + 0.7); buildAuto(false); } },
@@ -2120,10 +2207,24 @@ function autoExport() {
   exportFlow({
     sizes, sizeKey: () => S.auto.size, setSize: k => { S.auto.size = k; },
     dims: long => { const H = longToH(long); return { W: Math.round(H * ratio), H }; },
-    render: (long, p) => renderAuto(AS.ps, AS.L, AS.LM, longToH(long), p, 0.02, 0.92).then(r => { if (S.sign && S.name) drawSignature(r.c.getContext('2d'), r.W, r.H); return r; }),
+    render: (long, p) => renderAutoAny(longToH(long), p, 0.02, 0.92).then(r => { if (S.sign && S.name) drawSignature(r.c.getContext('2d'), r.W, r.H); return r; }),
     kind: 'autocollage', name: () => T('autoTitle'),
     thumb: () => thumbOf(AS.prev.c, AS.prev.W, AS.prev.H),
     onSaved: () => { AS.saved = true; }
+  });
+}
+
+function autoStyleSheet() {
+  const opts = [['blend', '🌊'], ['album', '📷'], ['grid', '▦']];
+  const m = openModal({
+    title: T('style'),
+    html: '<div class="seg" style="flex-direction:column">' + opts.map(([k, e]) => '<button type="button" data-s="' + k + '" class="' + (S.auto.style === k ? 'on' : '') + '" style="justify-content:flex-start;text-align:start;min-height:58px;padding:8px 14px"><span style="font-size:22px;margin-inline-end:10px">' + e + '</span><span><b>' + esc(T('st_' + k)) + '</b><br><small class="muted">' + esc(T('st_' + k + '_d')) + '</small></span></button>').join('') + '</div>',
+    actions: [{ label: T('close'), cls: 'ghost' }]
+  });
+  m.body.querySelectorAll('[data-s]').forEach(b => b.onclick = async () => {
+    S.auto.style = b.dataset.s; saveS(); m.close();
+    $('aeSeams').classList.toggle('hidden', S.auto.style !== 'blend');
+    await buildAuto(false);
   });
 }
 
@@ -2625,6 +2726,12 @@ Object.assign(LANG.ar, {
   g7t: 'AutoCollage', g7: 'أعطه رحلة كاملة. يختار أفضل الصور ويحافظ على الوجوه ويدمج كل شيء في صورة واحدة متصلة. اضغط على صورة لتعديلها.'
 });
 
+Object.assign(LANG.en, {"drawingN": "Placing photo {n} of {t}", "st_blend": "Seamless blend", "st_blend_d": "Classic AutoCollage — photos melt into one picture", "st_album": "Photo album", "st_album_d": "Framed prints, slightly tilted, with soft shadows", "st_grid": "Clean grid", "st_grid_d": "Tidy layout with thin gaps, faces kept in frame"});
+Object.assign(LANG.he, {"drawingN": "ממקם תמונה {n} מתוך {t}", "st_blend": "מיזוג חלק", "st_blend_d": "AutoCollage הקלאסי — התמונות נמסות לתמונה אחת", "st_album": "אלבום תמונות", "st_album_d": "תמונות מודפסות במסגרת, קצת מוטות, עם צל רך", "st_grid": "רשת נקייה", "st_grid_d": "פריסה מסודרת עם מרווחים דקים, הפנים בתוך המסגרת"});
+Object.assign(LANG.ru, {"drawingN": "Размещаю фото {n} из {t}", "st_blend": "Бесшовное слияние", "st_blend_d": "Классический AutoCollage — фото сливаются в одну картину", "st_album": "Фотоальбом", "st_album_d": "Фото в рамках, слегка наклонены, с мягкой тенью", "st_grid": "Чистая сетка", "st_grid_d": "Аккуратная раскладка с тонкими зазорами, лица в кадре"});
+Object.assign(LANG.es, {"drawingN": "Colocando foto {n} de {t}", "st_blend": "Fusión continua", "st_blend_d": "El AutoCollage clásico: las fotos se funden en una sola imagen", "st_album": "Álbum de fotos", "st_album_d": "Fotos impresas con marco, algo inclinadas, con sombra suave", "st_grid": "Cuadrícula limpia", "st_grid_d": "Disposición ordenada con espacios finos y las caras dentro del marco"});
+Object.assign(LANG.ar, {"drawingN": "وضع الصورة {n} من {t}", "st_blend": "دمج متصل", "st_blend_d": "AutoCollage الكلاسيكي — تذوب الصور في صورة واحدة", "st_album": "ألبوم صور", "st_album_d": "صور مطبوعة بإطار، مائلة قليلًا، مع ظل ناعم", "st_grid": "شبكة نظيفة", "st_grid_d": "ترتيب مرتب بفواصل رفيعة مع إبقاء الوجوه داخل الإطار"});
+
 /* ═══ CollageNest — screens: home, libraries, gallery, settings, about, guide, diagnostics, router, init ═══ */
 
 /* ── router (Android back button friendly) ── */
@@ -2998,7 +3105,7 @@ function registerSW() {
   applyLang();
   $('themeBtn').onclick = themePicker;
   $('modeBtn').onclick = () => { S.mode = S.mode === 'day' ? 'night' : 'day'; saveS(); applyTheme(); };
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modalStack.length && cur.s !== 'home' && !Prog.cur) history.back(); });
+  document.addEventListener('keydown', e => { if (e.key !== 'Escape' || Prog.cur) return; if (modalStack.length) { modalStack[modalStack.length - 1].close(); return; } if (cur.s !== 'home') history.back(); });
   await DB.open();
   const st = history.state && history.state.s ? history.state : { s: 'home', a: null };
   history.replaceState(st, '');
