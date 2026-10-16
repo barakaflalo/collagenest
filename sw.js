@@ -27,10 +27,11 @@
    - CDN libraries (heic2any, face-api): cache-first in a separate vendor cache
    - share target: POST ./share-target → photos parked in cache 'collagenest-share' → redirect to ./?shared=N
    Bump VERSION on every update. */
-var VERSION = '1.4.0';
+var VERSION = '1.5.0';
 var APP_CACHE = 'collagenest-app-' + VERSION;
 var VENDOR_CACHE = 'collagenest-vendor-v1';
-var SHELL = ['./', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html'];
+var SHELL = ['./', './manifest.json', './icon-192.png', './icon-512.png', './privacy_policy.html',
+  './cn-core.js', './cn-mosaic.js', './cn-collage.js', './cn-auto.js', './cn-words.js', './cn-lang.js', './cn-app.js'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
@@ -116,7 +117,7 @@ self.addEventListener('fetch', function (e) {
       if (r && r.ok) { var cp = r.clone(); caches.open(APP_CACHE).then(function (c) { return c.put(req, cp); }); }
       return r;
     }).catch(function () {
-      return caches.match(req, { ignoreSearch: true }).then(function (h) { return h || Response.error(); });
+      return caches.match(req).then(function (h) { return h || caches.match(req, { ignoreSearch: true }); }).then(function (h) { return h || Response.error(); });
     })
   );
 });
